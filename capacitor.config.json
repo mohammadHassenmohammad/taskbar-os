@@ -1,0 +1,26 @@
+{
+  "appId": "com.taskbar.app",
+  "appName": "TaskBar",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#0a0b10",
+      "showSpinner": true,
+      "androidSpinnerStyle": "large",
+      "iosSpinnerStyle": "small",
+      "spinnerColor": "#6366f1"
+    },
+    "Keyboard": {
+      "resize": "body",
+      "style": "dark"
+    },
+    "LocalNotifications": {
+      "iconColor": "#6366f1"
+    }
+  }
+}
