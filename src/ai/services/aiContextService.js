@@ -3,7 +3,7 @@ import { format, subDays, eachDayOfInterval } from 'date-fns';
 /**
  * AI Context Aggregation and Sanitization Service
  * Extracts minimal, privacy-conscious data from TaskBar OS state.
- * Never exposes passwords, raw tokens, or excessive store trees.
+ * Never exposes passwords, raw tokens, or sensitive store internals.
  */
 
 export function prepareProductivityContext(state, daysWindow = 7) {
@@ -161,6 +161,21 @@ export function prepareNutritionContext(state, daysWindow = 7) {
   };
 }
 
+export function prepareRoutinesContext(state) {
+  const routines = state.routines || [];
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const routineLogs = state.routineLogs || {};
+  const todayLogs = routineLogs[todayStr] || {};
+
+  return routines.map(r => ({
+    id: r.id,
+    title: r.title,
+    type: r.type || 'morning',
+    stepsCount: (r.steps || []).length,
+    completedToday: Boolean(todayLogs[r.id])
+  }));
+}
+
 /**
  * Prepares the complete, sanitized context payload for AI consultation.
  * Respects user AI privacy settings.
@@ -182,7 +197,6 @@ export function prepareFullContext(state) {
 
   if (privacy.includeTasks !== false) {
     context.productivity = prepareProductivityContext(state, 7);
-    // Include today's active tasks (titles and priorities only, no private notes)
     const todayTasks = (state.tasks?.[todayStr] || []).map(t => ({
       id: t.id,
       title: t.title,
@@ -206,6 +220,28 @@ export function prepareFullContext(state) {
     context.nutrition = prepareNutritionContext(state, 7);
   }
 
+  // Include routines if present
+  if (state.routines && state.routines.length > 0) {
+    context.routines = prepareRoutinesContext(state);
+  }
+
   return context;
 }
 
+/**
+ * Returns human-readable badges for the Chat Context Indicator
+ */
+export function getContextBadges(state) {
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const todayTasks = state.tasks?.[todayStr] || [];
+  const activeHabits = (state.habits || []).filter(h => !h.archived);
+  const workoutsCount = Object.keys(state.workouts || {}).length;
+  const dietCount = (state.dietEntries?.[todayStr] || []).length;
+
+  return [
+    { label: `Tasks (${todayTasks.length})`, active: todayTasks.length > 0, type: 'tasks' },
+    { label: `Habits (${activeHabits.length})`, active: activeHabits.length > 0, type: 'habits' },
+    { label: `Workouts (${workoutsCount})`, active: workoutsCount > 0, type: 'workouts' },
+    { label: `Diet (${dietCount})`, active: dietCount > 0, type: 'diet' }
+  ];
+}

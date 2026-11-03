@@ -10,7 +10,7 @@ import {
 
 /**
  * Frontend AI Client Service
- * Dispatches requests to the secure backend `/api/ai` endpoints with response caching.
+ * Dispatches requests to the secure backend `/api/ai` endpoints with response caching and real-time streaming.
  */
 class AIService {
   constructor() {
@@ -32,8 +32,117 @@ class AIService {
     }
   }
 
-  async sendChatMessage(messages, context = {}) {
-    const payload = { messages, context };
+  /**
+   * Diagnostic live test connection
+   */
+  async testConnection() {
+    try {
+      const res = await fetch(`${this.baseUrl}/test-connection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Connection test failed (${res.status})`);
+      }
+      return await res.json();
+    } catch (err) {
+      return {
+        success: false,
+        connected: false,
+        error: err.message
+      };
+    }
+  }
+
+  /**
+   * Diagnostic details query
+   */
+  async getDiagnostics() {
+    try {
+      const res = await fetch(`${this.baseUrl}/diagnostics`);
+      if (!res.ok) throw new Error('Diagnostics check failed');
+      return await res.json();
+    } catch (err) {
+      return {
+        success: false,
+        connected: false,
+        error: err.message
+      };
+    }
+  }
+
+  /**
+   * Real-time Server-Sent Events (SSE) streaming chat
+   */
+  async streamChatMessage({ messages, mode = 'normal', context = {}, preferences = {}, onChunk, onDone, onError, abortSignal }) {
+    const payload = { messages, mode, context, preferences };
+
+    try {
+      const res = await fetch(`${this.baseUrl}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: abortSignal
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Streaming request failed (${res.status})`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let accumulatedText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            const dataStr = trimmed.slice(6).trim();
+            if (dataStr === '[DONE]') {
+              continue;
+            }
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.error) {
+                throw new Error(parsed.error);
+              }
+              if (parsed.chunk) {
+                accumulatedText += parsed.chunk;
+                if (onChunk) onChunk(parsed.chunk, accumulatedText);
+              }
+            } catch (pErr) {
+              if (dataStr !== '[DONE]') {
+                // Ignore transient chunks
+              }
+            }
+          }
+        }
+      }
+
+      if (onDone) onDone(accumulatedText);
+      return { text: accumulatedText };
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        if (onDone) onDone('');
+        return { aborted: true };
+      }
+      if (onError) onError(err);
+      throw err;
+    }
+  }
+
+  async sendChatMessage(messages, context = {}, mode = 'normal', preferences = {}) {
+    const payload = { messages, context, mode, preferences };
     const res = await fetch(`${this.baseUrl}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -103,56 +212,41 @@ class AIService {
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || 'Failed to generate plan');
+      throw new Error(errData.error || `Daily plan generation error (${res.status})`);
     }
 
-    const data = await res.json();
-    const validated = validateDailyPlan(data.plan);
-    localStorage.setItem(cacheKey, JSON.stringify(validated));
+    const json = await res.json();
+    const validated = validateDailyPlan(json.plan);
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(validated));
+    } catch {
+      // ignore quota err
+    }
     return validated;
   }
 
   /**
-   * Generates or retrieves cached weekly/monthly report
+   * Generates weekly intelligence dossier
    */
-  async getReport(period = 'weekly', reportData = {}, forceRegenerate = false) {
-    const cacheKey = `taskbar_ai_report_${period}`;
-
-    if (!forceRegenerate) {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          // Reuse cache if generated within last 12 hours
-          if (parsed && (Date.now() - (parsed.cachedAt || 0)) < 12 * 3600 * 1000) {
-            return parsed.report;
-          }
-        } catch {
-          // continue to fetch
-        }
-      }
-    }
-
+  async getWeeklyReport(data = {}) {
     const res = await fetch(`${this.baseUrl}/report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ period, data: reportData })
+      body: JSON.stringify({ data })
     });
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || 'Failed to generate report');
+      throw new Error(errData.error || `Weekly report generation error (${res.status})`);
     }
 
-    const data = await res.json();
-    const validated = validateWeeklyReport(data.report);
-    localStorage.setItem(cacheKey, JSON.stringify({
-      cachedAt: Date.now(),
-      report: validated
-    }));
-    return validated;
+    const json = await res.json();
+    return validateWeeklyReport(json.report);
   }
 
+  /**
+   * Retrieves proactive recommendations
+   */
   async getSuggestions(data = {}) {
     const res = await fetch(`${this.baseUrl}/suggestions`, {
       method: 'POST',
@@ -162,13 +256,13 @@ class AIService {
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || 'Failed to fetch suggestions');
+      throw new Error(errData.error || `Suggestions fetch error (${res.status})`);
     }
 
     const json = await res.json();
-    return (json.suggestions || []).map(validateSuggestion).filter(Boolean);
+    const list = Array.isArray(json.suggestions) ? json.suggestions : [];
+    return list.map(validateSuggestion);
   }
 }
 
 export const aiService = new AIService();
-

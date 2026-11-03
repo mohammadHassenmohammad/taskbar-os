@@ -6,6 +6,11 @@ let cachedGemini = null;
 let cachedOpenRouter = null;
 let cachedLocal = null;
 
+export function getGeminiProvider() {
+  if (!cachedGemini) cachedGemini = new GeminiProvider();
+  return cachedGemini;
+}
+
 export function getProvider(preferredProvider = null) {
   const providerName = preferredProvider || process.env.AI_PROVIDER || 'gemini';
 
@@ -15,8 +20,8 @@ export function getProvider(preferredProvider = null) {
   }
 
   // Default to Gemini
-  if (!cachedGemini) cachedGemini = new GeminiProvider();
-  if (cachedGemini.isConfigured()) return cachedGemini;
+  const gemini = getGeminiProvider();
+  if (gemini.isConfigured()) return gemini;
 
   // Fallback to local deterministic
   if (!cachedLocal) cachedLocal = new LocalDeterministicProvider();
@@ -24,7 +29,7 @@ export function getProvider(preferredProvider = null) {
 }
 
 export function getProviderStatus() {
-  const gemini = cachedGemini || new GeminiProvider();
+  const gemini = getGeminiProvider();
   const openRouter = cachedOpenRouter || new OpenRouterProvider();
   const active = getProvider();
 
@@ -35,9 +40,14 @@ export function getProviderStatus() {
       gemini: {
         name: 'Google Gemini',
         configured: gemini.isConfigured(),
-        model: gemini.model,
+        preferredModel: gemini.preferredModel,
+        resolvedModel: gemini.lastResolvedModel,
+        discoveredModelsCount: gemini.discoveredModels.length,
+        discoveredModels: gemini.discoveredModels,
+        lastSuccess: gemini.lastSuccessfulRequestAt,
+        lastError: gemini.lastConnectionError,
         tier: 'Free Tier (15 RPM / 1,500 RPD)',
-        eligibleFreeModels: ['gemini-1.5-flash', 'gemini-2.0-flash']
+        eligibleFreeModels: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-1.5-flash-8b']
       },
       openrouter: {
         name: 'OpenRouter (Optional)',
@@ -55,3 +65,7 @@ export function getProviderStatus() {
   };
 }
 
+export async function testGeminiConnection() {
+  const gemini = getGeminiProvider();
+  return await gemini.testConnection();
+}

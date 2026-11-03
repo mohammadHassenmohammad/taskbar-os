@@ -177,6 +177,16 @@ export class LocalDeterministicProvider extends BaseAIProvider {
     };
   }
 
+  async generateStreamResponse(messages, options = {}, onChunk = () => {}) {
+    const res = await this.generateResponse(messages, options);
+    const words = res.text.split(' ');
+    for (let i = 0; i < words.length; i++) {
+      const chunk = (i === 0 ? '' : ' ') + words[i];
+      onChunk(chunk);
+    }
+    return res;
+  }
+
   async generateSuggestions(data = {}) {
     const list = [
       {

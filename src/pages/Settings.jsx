@@ -9,6 +9,7 @@ import {
   FileText, AlertTriangle, X, Check, Brain, Cpu, ShieldCheck
 } from 'lucide-react';
 import { aiService } from '../ai/services/aiService';
+import { aiMemoryService } from '../ai/services/aiMemoryService';
 import toast from 'react-hot-toast';
 
 function SettingRow({ label, sub, icon: Icon, children }) {
@@ -72,10 +73,59 @@ export default function Settings() {
   const [importPreview, setImportPreview] = useState(null);
   const [createPreBackup, setCreatePreBackup] = useState(true);
 
+  const [diagnosticResult, setDiagnosticResult] = useState(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [memoryEnabled, setMemoryEnabled] = useState(() => aiMemoryService.isMemoryEnabled());
+  const [memoryPrefs, setMemoryPrefs] = useState(() => aiMemoryService.getPreferences());
+  const [newPrefKey, setNewPrefKey] = useState('');
+  const [newPrefVal, setNewPrefVal] = useState('');
+
   // Load AI Server Status
   useState(() => {
     aiService.getStatus().then(setAiStatus).catch(() => {});
   });
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setDiagnosticResult(null);
+    try {
+      const res = await aiService.testConnection();
+      setDiagnosticResult(res);
+      if (res.connected) {
+        toast.success(`Connected to Gemini (${res.activeModel}) in ${res.latencyMs || 0}ms! 🚀`);
+      } else {
+        toast.error(res.error || 'Connection failed', { icon: '⚠️' });
+      }
+    } catch (err) {
+      setDiagnosticResult({ success: false, connected: false, error: err.message });
+      toast.error(err.message, { icon: '⚠️' });
+    } finally {
+      setTestingConnection(false);
+      aiService.getStatus().then(setAiStatus).catch(() => {});
+    }
+  };
+
+  const handleToggleMemory = (enabled) => {
+    setMemoryEnabled(enabled);
+    aiMemoryService.setMemoryEnabled(enabled);
+    toast.success(enabled ? 'AI memory enabled' : 'AI memory disabled');
+  };
+
+  const handleAddPreference = (e) => {
+    e?.preventDefault();
+    if (!newPrefKey.trim() || !newPrefVal.trim()) return;
+    aiMemoryService.setPreference(newPrefKey.trim(), newPrefVal.trim());
+    setMemoryPrefs(aiMemoryService.getPreferences());
+    setNewPrefKey('');
+    setNewPrefVal('');
+    toast.success('Preference stored in AI memory');
+  };
+
+  const handleDeletePreference = (key) => {
+    aiMemoryService.deletePreference(key);
+    setMemoryPrefs(aiMemoryService.getPreferences());
+    toast.success(`Preference "${key}" removed`);
+  };
 
   const handleSave = () => {
     updateSettings(localSettings);
@@ -413,46 +463,229 @@ export default function Settings() {
                    />
                 </SettingRow>
 
-                {/* AI Provider Status Card */}
+                {/* AI Provider & Dynamic Connection Diagnostic Screen */}
                 <div style={{ padding: 20, background: 'var(--bg-elevated)', borderRadius: 16, border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Cpu size={18} color="var(--accent-primary)" />
-                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>Active Provider & Model Architecture</span>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>Gemini Connection & Model Diagnostics</span>
                     </div>
-                    <span className="badge" style={{
-                      background: aiStatus?.isCloudConfigured ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
-                      color: aiStatus?.isCloudConfigured ? '#10b981' : '#f59e0b',
-                      fontSize: 10, fontWeight: 800
-                    }}>
-                      {aiStatus?.isCloudConfigured ? 'GOOGLE GEMINI (CLOUD)' : 'LOCAL DETERMINISTIC (OFFLINE)'}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="badge" style={{
+                        background: (diagnosticResult?.connected ?? aiStatus?.isCloudConfigured) ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                        color: (diagnosticResult?.connected ?? aiStatus?.isCloudConfigured) ? '#10b981' : '#f59e0b',
+                        fontSize: 10, fontWeight: 800
+                      }}>
+                        {(diagnosticResult?.connected ?? aiStatus?.isCloudConfigured) ? 'GEMINI CONNECTED' : 'LOCAL ENGINE / DISCONNECTED'}
+                      </span>
+
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={handleTestConnection}
+                        disabled={testingConnection}
+                        style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <RefreshCw size={12} className={testingConnection ? 'spin' : ''} />
+                        <span>{testingConnection ? 'Pinging Gemini...' : 'Test Connection'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
                     <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: 10 }}>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Active Model</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>API Key Configured</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: aiStatus?.providers?.gemini?.configured ? '#10b981' : '#ef4444' }}>
+                        {aiStatus?.providers?.gemini?.configured ? 'Yes (Server Environment)' : 'No (Local Offline)'}
+                      </div>
+                    </div>
+
+                    <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: 10 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Active / Selected Model</div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>
-                        {aiStatus?.isCloudConfigured ? aiStatus.providers?.gemini?.model : 'Local Analytics Engine'}
+                        {diagnosticResult?.activeModel || aiStatus?.providers?.gemini?.resolvedModel || aiStatus?.providers?.gemini?.preferredModel || 'gemini-2.0-flash'}
                       </div>
                     </div>
+
                     <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: 10 }}>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Rate Limit Guardrail</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Discovered Models</div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-primary)' }}>
-                        {aiStatus?.limits?.rpmLimit || 15} RPM / {aiStatus?.limits?.dailyLimit || 1500} RPD
+                        {diagnosticResult?.discoveredCount ?? (aiStatus?.providers?.gemini?.discoveredModelsCount || 0)} available
                       </div>
                     </div>
+
                     <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: 10 }}>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Today's Requests</div>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: '#10b981' }}>
-                        {aiStatus?.limits?.dailyRequestsCount || 0} calls
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Last Connection Status</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: (diagnosticResult?.connected ?? aiStatus?.isCloudConfigured) ? '#10b981' : '#f59e0b' }}>
+                        {diagnosticResult ? (diagnosticResult.connected ? `Success (${diagnosticResult.latencyMs}ms)` : 'Failed') : (aiStatus?.providers?.gemini?.lastSuccess ? 'Online' : 'Standby')}
                       </div>
                     </div>
                   </div>
 
+                  {/* Discovered Models Chips */}
+                  {((diagnosticResult?.availableModels || aiStatus?.providers?.gemini?.discoveredModels)?.length > 0) && (
+                    <div style={{ marginTop: 4 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                        Compatible Discovered Models:
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {(diagnosticResult?.availableModels || aiStatus?.providers?.gemini?.discoveredModels || []).map((m, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              background: 'rgba(99, 102, 241, 0.1)',
+                              border: '1px solid rgba(99, 102, 241, 0.25)',
+                              color: 'var(--accent-primary)'
+                            }}
+                          >
+                            {m.cleanName || m.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Last Error Display if any */}
+                  {(diagnosticResult?.error || aiStatus?.providers?.gemini?.lastError) && (
+                    <div style={{
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                      color: '#ef4444',
+                      fontSize: 11
+                    }}>
+                      <strong>Connection Diagnostic Notice:</strong> {diagnosticResult?.error || aiStatus?.providers?.gemini?.lastError}
+                    </div>
+                  )}
+
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                    💡 <strong>Zero-Credential Policy:</strong> API keys are strictly configured on the server-side via environment variables (e.g. <code>GEMINI_API_KEY</code> in <code>.env</code>) and are never exposed in the browser or public code.
+                    💡 <strong>Self-Healing Discovery:</strong> TaskBar OS dynamically calls Google's <code>ListModels</code> API to discover and select available generative models, with automatic fallback if a model alias is deprecated.
                   </div>
+                </div>
+
+                {/* Long-Term Preference Memory (Phase 5) */}
+                <div style={{ padding: 20, background: 'var(--bg-elevated)', borderRadius: 16, border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Brain size={18} color="var(--accent-primary)" />
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>Personal AI Memory & Preferences</span>
+                    </div>
+                    <Switch checked={memoryEnabled} onChange={handleToggleMemory} />
+                  </div>
+
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+                    Stores high-level planning preferences, communication habits, and user goals across conversations. You retain full sovereignty to edit or wipe stored memories at any time.
+                  </p>
+
+                  {/* Preferences List */}
+                  {memoryEnabled && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                      {Object.entries(memoryPrefs).length === 0 ? (
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                          No custom memories stored yet. Add one below.
+                        </div>
+                      ) : (
+                        Object.entries(memoryPrefs).map(([key, val]) => (
+                          <div
+                            key={key}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '8px 12px',
+                              borderRadius: 8,
+                              background: 'rgba(0, 0, 0, 0.2)',
+                              border: '1px solid var(--border-subtle)'
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-primary)' }}>{key}</div>
+                              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{String(val)}</div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-icon btn-xs text-danger"
+                              onClick={() => handleDeletePreference(key)}
+                              title="Delete this preference"
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                        ))
+                      )}
+
+                      {/* Add Preference Form */}
+                      <form onSubmit={handleAddPreference} style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                        <input
+                          type="text"
+                          placeholder="Preference Name (e.g. preferredStyle)"
+                          value={newPrefKey}
+                          onChange={(e) => setNewPrefKey(e.target.value)}
+                          style={{
+                            flex: 1,
+                            minWidth: 140,
+                            padding: '6px 10px',
+                            background: 'rgba(0,0,0,0.3)',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: 8,
+                            color: 'var(--text-primary)',
+                            fontSize: 11,
+                            outline: 'none'
+                          }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Value (e.g. Concise and direct bullet points)"
+                          value={newPrefVal}
+                          onChange={(e) => setNewPrefVal(e.target.value)}
+                          style={{
+                            flex: 2,
+                            minWidth: 180,
+                            padding: '6px 10px',
+                            background: 'rgba(0,0,0,0.3)',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: 8,
+                            color: 'var(--text-primary)',
+                            fontSize: 11,
+                            outline: 'none'
+                          }}
+                        />
+                        <button type="submit" className="btn btn-secondary btn-sm" style={{ fontSize: 11 }}>
+                          Add Memory
+                        </button>
+                      </form>
+
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs text-danger"
+                          onClick={() => {
+                            aiMemoryService.clearPreferences();
+                            setMemoryPrefs({});
+                            toast.success('AI memory wiped');
+                          }}
+                        >
+                          Clear All Preferences
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs text-danger"
+                          onClick={() => {
+                            aiMemoryService.clearAllConversations();
+                            toast.success('All conversation threads cleared');
+                          }}
+                        >
+                          Clear All Conversation Threads
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Privacy & Data Sharing */}

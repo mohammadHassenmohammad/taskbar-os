@@ -18,6 +18,16 @@ export class BaseAIProvider {
   }
 
   /**
+   * Real-time streaming response
+   * @param {Array<{role: string, content: string}>} messages
+   * @param {Object} options
+   * @param {Function} onChunk
+   */
+  async generateStreamResponse(messages, options = {}, onChunk = () => {}) {
+    throw new Error('generateStreamResponse must be implemented by provider');
+  }
+
+  /**
    * Generates a validated structured JSON response according to a schema
    * @param {string} prompt
    * @param {Object} schema
@@ -65,7 +75,7 @@ export class BaseAIProvider {
   }
 
   /**
-   * Generates comprehensive weekly or monthly performance report
+   * Generates comprehensive weekly progress dossier
    * @param {Object} data
    * @returns {Promise<Object>}
    */
@@ -74,12 +84,18 @@ export class BaseAIProvider {
   }
 
   /**
-   * Generates actionable suggestions based on actual user data
+   * Generates proactive, personalized suggestions
    * @param {Object} data
    * @returns {Promise<Array<Object>>}
    */
   async generateSuggestions(data) {
     throw new Error('generateSuggestions must be implemented by provider');
   }
-}
 
+  /**
+   * Connection diagnostic test
+   */
+  async testConnection() {
+    return { success: true, connected: true, provider: this.name };
+  }
+}

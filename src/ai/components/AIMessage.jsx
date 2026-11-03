@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Bot, User, Copy, Check, Trash2, ShieldCheck } from 'lucide-react';
+import { Bot, User, Copy, Check, Trash2, CheckCircle2, X, PlusCircle, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-export default function AIMessage({ message, onDelete }) {
+export default function AIMessage({ message, onDelete, onApproveAction }) {
   const [copied, setCopied] = useState(false);
+  const [actionHandled, setActionHandled] = useState(false);
   const isAssistant = message.role === 'assistant';
 
   const handleCopy = () => {
@@ -14,7 +15,25 @@ export default function AIMessage({ message, onDelete }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Basic lightweight markdown renderer for headers, bold, bullets, code blocks
+  // Detect actionable suggestion in assistant message (e.g. "Create task: ...")
+  const extractActionProposal = (text) => {
+    if (!text || !isAssistant) return null;
+    const taskMatch = text.match(/(?:suggest|recommend|create)\s+task[:\s]+"([^"]+)"/i) ||
+                      text.match(/(?:suggest|recommend|create)\s+task[:\s]+([^\n.,]+)/i);
+    if (taskMatch && !actionHandled) {
+      return {
+        type: 'create_task',
+        title: taskMatch[1].trim(),
+        priority: 'Medium',
+        category: 'Work'
+      };
+    }
+    return null;
+  };
+
+  const actionProposal = extractActionProposal(message.content);
+
+  // Markdown renderer for headers, bold, bullets, inline code, and code blocks
   const renderFormattedContent = (text) => {
     if (!text) return null;
     const lines = text.split('\n');
@@ -50,14 +69,13 @@ export default function AIMessage({ message, onDelete }) {
   };
 
   const renderInlineStyles = (str) => {
-    // Bold **text**
-    const parts = str.split(/(\*\*[^*]+\*\*)/g);
+    const parts = str.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
         return <strong key={i} style={{ color: 'var(--text-primary)', fontWeight: 800 }}>{part.slice(2, -2)}</strong>;
       }
       if (part.startsWith('`') && part.endsWith('`')) {
-        return <code key={i} style={{ padding: '1px 5px', borderRadius: 4, background: 'rgba(255,255,255,0.08)', fontSize: 12 }}>{part.slice(1, -1)}</code>;
+        return <code key={i} style={{ padding: '1px 5px', borderRadius: 4, background: 'rgba(255,255,255,0.08)', fontSize: 12, fontFamily: 'monospace' }}>{part.slice(1, -1)}</code>;
       }
       return part;
     });
@@ -92,10 +110,23 @@ export default function AIMessage({ message, onDelete }) {
       {/* Content */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)' }}>
-              {isAssistant ? 'TaskBar OS AI' : 'Operative'}
+              {isAssistant ? 'TaskBar OS Companion' : 'Operative'}
             </span>
+            {message.mode && (
+              <span style={{
+                fontSize: 9,
+                fontWeight: 700,
+                padding: '1px 6px',
+                borderRadius: 4,
+                background: 'rgba(99, 102, 241, 0.15)',
+                color: 'var(--accent-primary)',
+                textTransform: 'uppercase'
+              }}>
+                {message.mode}
+              </span>
+            )}
             {message.isLocalFallback && (
               <span style={{
                 fontSize: 9,
@@ -138,8 +169,59 @@ export default function AIMessage({ message, onDelete }) {
         <div style={{ color: 'var(--text-secondary)' }}>
           {renderFormattedContent(message.content)}
         </div>
+
+        {/* Action Proposal Card (Phase 8 Action Approval Workflow) */}
+        {actionProposal && !actionHandled && onApproveAction && (
+          <div style={{
+            marginTop: 12,
+            padding: '10px 14px',
+            borderRadius: 10,
+            background: 'rgba(99, 102, 241, 0.08)',
+            border: '1px solid rgba(99, 102, 241, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Sparkles size={14} color="var(--accent-primary)" />
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)' }}>
+                  Suggested Action: Create Task
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  "{actionProposal.title}"
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                type="button"
+                className="btn btn-primary btn-xs"
+                onClick={() => {
+                  onApproveAction(actionProposal);
+                  setActionHandled(true);
+                }}
+                style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                <CheckCircle2 size={12} />
+                <span>Approve & Add</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                onClick={() => setActionHandled(true)}
+                style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                <X size={12} />
+                <span>Dismiss</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-

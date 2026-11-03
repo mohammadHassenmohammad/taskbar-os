@@ -1,13 +1,13 @@
-import { getProvider, getProviderStatus } from './providerRegistry.js';
+import { getProvider, getProviderStatus, testGeminiConnection } from './providerRegistry.js';
 import { checkRateLimit, validatePayloadSize, sanitizeInput, getRateLimitStats } from './security.js';
 
 /**
  * Core Request Dispatcher for TaskBar OS AI Server
- * Handles both standard Node http request/response and Vite Connect middleware
+ * Handles standard Node http request/response and Vite Connect middleware
+ * Supports Server-Sent Events (SSE) streaming, diagnostics, and structured analytical endpoints.
  */
 export async function handleAIRequest(req, res, urlPath, body = {}) {
-  // Set CORS and JSON headers
-  res.setHeader('Content-Type', 'application/json');
+  // Common CORS and Base Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -20,6 +20,7 @@ export async function handleAIRequest(req, res, urlPath, body = {}) {
 
   // 1. GET /api/ai/status
   if (req.method === 'GET' && urlPath.endsWith('/status')) {
+    res.setHeader('Content-Type', 'application/json');
     const status = getProviderStatus();
     const limits = getRateLimitStats();
     res.statusCode = 200;
@@ -27,17 +28,33 @@ export async function handleAIRequest(req, res, urlPath, body = {}) {
     return;
   }
 
+  // 2. GET /api/ai/diagnostics or POST /api/ai/test-connection
+  if (urlPath.endsWith('/diagnostics') || urlPath.endsWith('/test-connection')) {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const diag = await testGeminiConnection();
+      res.statusCode = 200;
+      res.end(JSON.stringify(diag));
+    } catch (err) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ success: false, connected: false, error: err.message }));
+    }
+    return;
+  }
+
   // Enforce POST for intelligence endpoints
   if (req.method !== 'POST') {
+    res.setHeader('Content-Type', 'application/json');
     res.statusCode = 405;
     res.end(JSON.stringify({ error: 'Method Not Allowed. Use POST.' }));
     return;
   }
 
-  // 2. Rate-Limit Check
+  // 3. Rate-Limit Check
   const clientId = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'client';
   const rateLimit = checkRateLimit(clientId);
   if (!rateLimit.allowed) {
+    res.setHeader('Content-Type', 'application/json');
     res.statusCode = 429;
     res.end(JSON.stringify({
       error: rateLimit.reason,
@@ -47,25 +64,64 @@ export async function handleAIRequest(req, res, urlPath, body = {}) {
     return;
   }
 
-  // 3. Resolve Provider
+  // 4. Resolve Active Provider
   const requestedProvider = body.provider || null;
   const provider = getProvider(requestedProvider);
 
   try {
-    // A. Chat Conversation Endpoint
+    // A. Real-time Streaming Chat Endpoint (Server-Sent Events)
+    if (urlPath.endsWith('/chat/stream')) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+      });
+
+      const messages = (body.messages || []).map(m => ({
+        role: m.role,
+        content: sanitizeInput(m.content)
+      }));
+      const mode = body.mode || 'normal';
+      const context = body.context || {};
+      const preferences = body.preferences || {};
+
+      try {
+        await provider.generateStreamResponse(
+          messages,
+          { mode, context, preferences },
+          (chunk) => {
+            res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+          }
+        );
+        res.write('data: [DONE]\n\n');
+        res.end();
+      } catch (streamErr) {
+        res.write(`data: ${JSON.stringify({ error: streamErr.message })}\n\n`);
+        res.end();
+      }
+      return;
+    }
+
+    // Set JSON header for remaining endpoints
+    res.setHeader('Content-Type', 'application/json');
+
+    // B. Standard Conversational Chat Endpoint
     if (urlPath.endsWith('/chat')) {
       const messages = (body.messages || []).map(m => ({
         role: m.role,
         content: sanitizeInput(m.content)
       }));
+      const mode = body.mode || 'normal';
       const context = body.context || {};
-      const result = await provider.generateResponse(messages, { context });
+      const preferences = body.preferences || {};
+      const result = await provider.generateResponse(messages, { mode, context, preferences });
       res.statusCode = 200;
       res.end(JSON.stringify(result));
       return;
     }
 
-    // B. Modular Analysis Endpoint
+    // C. Modular Analysis Endpoint
     if (urlPath.endsWith('/analyze')) {
       const type = body.type || 'productivity';
       const data = body.data || {};
@@ -98,7 +154,7 @@ export async function handleAIRequest(req, res, urlPath, body = {}) {
       return;
     }
 
-    // C. Daily Planning Endpoint
+    // D. Daily Planning Endpoint
     if (urlPath.endsWith('/plan')) {
       const context = body.context || {};
       const prompt = `You are the TaskBar OS Daily Planning Architect.
@@ -128,7 +184,7 @@ Return JSON with:
       return;
     }
 
-    // D. Weekly / Monthly Report Endpoint
+    // E. Weekly / Monthly Report Endpoint
     if (urlPath.endsWith('/report')) {
       const reportData = body.data || {};
       const report = await provider.generateWeeklyReport(reportData);
@@ -141,7 +197,7 @@ Return JSON with:
       return;
     }
 
-    // E. Suggestions Endpoint
+    // F. Suggestions Endpoint
     if (urlPath.endsWith('/suggestions')) {
       const data = body.data || {};
       const suggestions = await provider.generateSuggestions(data);
@@ -165,4 +221,3 @@ Return JSON with:
     }));
   }
 }
-

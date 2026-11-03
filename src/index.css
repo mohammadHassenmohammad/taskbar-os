@@ -2233,3 +2233,16 @@ body {
     padding: 12px !important;
   }
 }
+
+/* AI Companion Chat Responsive Adaptations */
+@media (max-width: 768px) {
+  .ai-chat-sidebar {
+    width: 210px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .ai-chat-sidebar {
+    display: none !important;
+  }
+}
