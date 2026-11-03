@@ -98,14 +98,28 @@ export default function AIInsights() {
     setPage(tab || 'today');
   };
 
-  // Load Actionable Suggestions on mount
+  // Load Actionable Suggestions with 15-min cache to respect Google Free Tier 5 RPM quota
   useEffect(() => {
     const fetchSuggestions = async () => {
+      const cacheKey = 'taskbar_ai_suggestions_cache';
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Date.now() - parsed.timestamp < 15 * 60 * 1000 && Array.isArray(parsed.data)) {
+            setSuggestions(parsed.data);
+            return;
+          }
+        } catch {}
+      }
+
       setLoadingSuggestions(true);
       try {
         const fullContext = prepareFullContext(store);
         const res = await aiService.getSuggestions(fullContext);
-        setSuggestions(res.slice(0, 4));
+        const top = res.slice(0, 4);
+        setSuggestions(top);
+        sessionStorage.setItem(cacheKey, JSON.stringify({ data: top, timestamp: Date.now() }));
       } catch (err) {
         console.error('Failed to load suggestions:', err);
       } finally {
@@ -115,9 +129,23 @@ export default function AIInsights() {
     fetchSuggestions();
   }, []);
 
-  // Run modular analysis
-  const runAnalysis = async (type) => {
+  // Run modular analysis with caching
+  const runAnalysis = async (type, forceRefresh = false) => {
     setActiveAnalysis(type);
+    const cacheKey = `taskbar_ai_analysis_${type}`;
+    if (!forceRefresh) {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Date.now() - parsed.timestamp < 15 * 60 * 1000 && parsed.data) {
+            setAnalysisData(parsed.data);
+            return;
+          }
+        } catch {}
+      }
+    }
+
     setLoadingAnalysis(true);
     try {
       const fullContext = prepareFullContext(store);
@@ -127,6 +155,7 @@ export default function AIInsights() {
                           type === 'nutrition' ? fullContext.nutrition : fullContext;
       const res = await aiService.analyze(type, dataPayload);
       setAnalysisData(res);
+      sessionStorage.setItem(cacheKey, JSON.stringify({ data: res, timestamp: Date.now() }));
     } catch (err) {
       console.error('Analysis error:', err);
     } finally {
