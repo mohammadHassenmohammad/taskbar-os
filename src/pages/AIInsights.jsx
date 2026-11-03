@@ -81,7 +81,7 @@ export default function AIInsights() {
     setPage, setDietActiveDate, setGymActiveDate 
   } = store;
 
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'chat' | 'planner' | 'reports'
+  const [activeTab, setActiveTab] = useState('chat'); // Default directly to clean conversational assistant
   const [reportPeriod, setReportPeriod] = useState('weekly');
   const [suggestions, setSuggestions] = useState([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -239,40 +239,32 @@ export default function AIInsights() {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{
-            width: 48, height: 48, borderRadius: 14,
+            width: 44, height: 44, borderRadius: 12,
             background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: 'var(--shadow-glow)', fontSize: 22,
+            boxShadow: 'var(--shadow-glow)', fontSize: 20,
           }}>
             🤖
           </div>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)' }}>
-              Tactical AI Intelligence
+            <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text-primary)' }}>
+              JARVIS Assistant
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Evidence-based analytics, daily planning & personalized debriefs
+              Your personal AI companion for tasks, habits & planning
             </div>
           </div>
         </div>
 
         {/* Tab switcher */}
-        <div style={{ display: 'flex', background: 'var(--bg-elevated)', padding: 4, borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
-          <button
-            className={`btn btn-sm ${activeTab === 'overview' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setActiveTab('overview')}
-            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8 }}
-          >
-            <Brain size={14} style={{ marginRight: 6 }} />
-            Overview & Analysis
-          </button>
+        <div style={{ display: 'flex', background: 'var(--bg-elevated)', padding: 4, borderRadius: 12, border: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: 2 }}>
           <button
             className={`btn btn-sm ${activeTab === 'chat' ? 'btn-primary' : 'btn-ghost'}`}
             onClick={() => setActiveTab('chat')}
             style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8 }}
           >
             <MessageSquare size={14} style={{ marginRight: 6 }} />
-            AI Assistant
+            Assistant
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'planner' ? 'btn-primary' : 'btn-ghost'}`}
@@ -283,28 +275,50 @@ export default function AIInsights() {
             Daily Planner
           </button>
           <button
+            className={`btn btn-sm ${activeTab === 'overview' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('overview')}
+            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8 }}
+          >
+            <Brain size={14} style={{ marginRight: 6 }} />
+            Insights & Health
+          </button>
+          <button
             className={`btn btn-sm ${activeTab === 'reports' ? 'btn-primary' : 'btn-ghost'}`}
             onClick={() => setActiveTab('reports')}
             style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8 }}
           >
             <FileText size={14} style={{ marginRight: 6 }} />
-            Strategic Reports
+            Weekly Report
           </button>
         </div>
       </motion.div>
 
-      {/* ── TAB 1: OVERVIEW & MODULAR ANALYSIS ── */}
+      {/* Provider Status Pill */}
+      <AIStatus status={ai.status} />
+
+      {/* ── TAB 1: INTERACTIVE ASSISTANT (CHAT) ── */}
+      {activeTab === 'chat' && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <AIChat ai={ai} />
+        </motion.div>
+      )}
+
+      {/* ── TAB 2: DAILY PLANNER ── */}
+      {activeTab === 'planner' && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <AIDailyPlanner />
+        </motion.div>
+      )}
+
+      {/* ── TAB 3: OVERVIEW & MODULAR ANALYSIS ── */}
       {activeTab === 'overview' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* Provider Status */}
-          <AIStatus status={ai.status} />
-
           {/* Actionable AI Suggestions Row */}
           {suggestions.length > 0 && (
             <div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Sparkles size={15} />
-                <span>Actionable AI Proposals (Requires Approval)</span>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Sparkles size={14} />
+                <span>Smart Recommendations</span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
                 {suggestions.map((sug, idx) => (
@@ -488,20 +502,6 @@ export default function AIInsights() {
               ))}
             </div>
           </div>
-        </motion.div>
-      )}
-
-      {/* ── TAB 2: INTERACTIVE ASSISTANT (CHAT) ── */}
-      {activeTab === 'chat' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <AIChat ai={ai} />
-        </motion.div>
-      )}
-
-      {/* ── TAB 3: DAILY PLANNER ── */}
-      {activeTab === 'planner' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <AIDailyPlanner />
         </motion.div>
       )}
 
