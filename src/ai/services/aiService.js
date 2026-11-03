@@ -226,22 +226,50 @@ class AIService {
   }
 
   /**
-   * Generates weekly intelligence dossier
+   * Generates periodic (weekly/monthly) intelligence report with 15-min cache
    */
-  async getWeeklyReport(data = {}) {
+  async getReport(period = 'weekly', data = {}, force = false) {
+    const cacheKey = `taskbar_ai_report_${period}`;
+    if (!force) {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Date.now() - parsed.timestamp < 15 * 60 * 1000 && parsed.data) {
+            return parsed.data;
+          }
+        } catch {
+          // ignore cache error
+        }
+      }
+    }
+
     const res = await fetch(`${this.baseUrl}/report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data })
+      body: JSON.stringify({ period, data })
     });
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `Weekly report generation error (${res.status})`);
+      throw new Error(errData.error || `Report generation error (${res.status})`);
     }
 
     const json = await res.json();
-    return validateWeeklyReport(json.report);
+    const validated = validateWeeklyReport(json.report);
+    try {
+      sessionStorage.setItem(cacheKey, JSON.stringify({ data: validated, timestamp: Date.now() }));
+    } catch {
+      // ignore quota err
+    }
+    return validated;
+  }
+
+  /**
+   * Generates weekly intelligence dossier (alias for backward compatibility)
+   */
+  async getWeeklyReport(data = {}) {
+    return this.getReport('weekly', data, false);
   }
 
   /**
