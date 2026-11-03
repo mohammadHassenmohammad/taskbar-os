@@ -54,6 +54,8 @@ async function runTestSuite() {
   assert(classifyIntent('delete task old meeting') === INTENT_TYPES.ACTION_COMMAND, 'Classifies "delete task" as ACTION_COMMAND');
   assert(classifyIntent('start 25 min focus timer') === INTENT_TYPES.ACTION_COMMAND, 'Classifies "start 25 min focus timer" as ACTION_COMMAND');
   assert(classifyIntent('log 2 glasses of water') === INTENT_TYPES.ACTION_COMMAND, 'Classifies "log 2 glasses of water" as ACTION_COMMAND');
+  assert(classifyIntent('add note "fayaz" for today') === INTENT_TYPES.ACTION_COMMAND, 'Classifies "add note" as ACTION_COMMAND');
+  assert(classifyIntent('not that i asked add notes "fayaz"') === INTENT_TYPES.ACTION_COMMAND, 'Classifies corrected "add notes" as ACTION_COMMAND');
 
   // --- 2. SELECTIVE DATA ORCHESTRATION ---
   console.log('\n--- 2. SELECTIVE DATA ORCHESTRATION ---');
@@ -174,6 +176,10 @@ async function runTestSuite() {
     if (createRoutine) return { type: 'create_routine', title: createRoutine[1].trim(), risk: 'low' };
     const createHabit = text.match(/Create habit[:\s]+"([^"]+)"/i);
     if (createHabit) return { type: 'create_habit', title: createHabit[1].trim(), risk: 'low' };
+    const createNote = text.match(/(?:add|create|save|take|write)\s+note[:\s]+"([^"]+)"/i) || text.match(/Add note[:\s]+([^\n.,]+)/i);
+    if (createNote) return { type: 'create_note', title: createNote[1].trim(), risk: 'low' };
+    const delNote = text.match(/(?:delete|remove)\s+note[:\s]+"([^"]+)"/i) || text.match(/Delete note[:\s]+([^\n.,]+)/i);
+    if (delNote) return { type: 'delete_note', title: delNote[1].trim(), risk: 'consequential' };
     return null;
   };
 
@@ -191,6 +197,12 @@ async function runTestSuite() {
 
   const p5 = extractTest('Delete habit: "Procrastination"');
   assert(p5 && p5.type === 'delete_habit' && p5.risk === 'consequential', 'Parses "Delete habit: Procrastination" with consequential risk');
+
+  const p6 = extractTest('Add note: "fayaz"');
+  assert(p6 && p6.type === 'create_note' && p6.title === 'fayaz' && p6.risk === 'low', 'Parses "Add note: fayaz" as distinct note action (NOT a task)');
+
+  const p7 = extractTest('Delete note: "fayaz"');
+  assert(p7 && p7.type === 'delete_note' && p7.risk === 'consequential', 'Parses "Delete note: fayaz" with consequential risk');
 
   // Verify date priority ordering in findTask
   const datesList = ['2026-11-03', '2026-11-01', '2026-10-30'];

@@ -60,10 +60,11 @@ export function classifyIntent(userText = '', recentHistory = []) {
     return INTENT_TYPES.GENERAL_KNOWLEDGE;
   }
 
-  // 6. Action Execution Commands (create, complete, delete, start focus, log water)
-  if (text.match(/^(create|add|schedule|log|start|begin|complete|finish|mark|check off|delete|remove|reschedule|move)\s+(task|habit|routine|food|meal|workout|focus|water|sleep|steps|session)\b/i) ||
-      text.match(/^(drink|log)\s+\d+\s*(glasses|ml|liters|cups)?\s*(of\s+)?(water)?/i) ||
-      text.match(/^(start|begin)\s+(\d+)\s*(min|minute|mins)?\s*(focus|pomodoro|timer)/i)) {
+  // 6. Action Execution Commands (create, complete, delete, start focus, log water, notes)
+  if (text.match(/\b(create|add|schedule|log|start|begin|complete|finish|mark|check off|delete|remove|reschedule|move|write|take|save)\s+(task|habit|routine|note|notes|thought|food|meal|workout|focus|water|sleep|steps|session)\b/i) ||
+      text.match(/\b(note\s+down|take\s+note|take\s+a\s+note|add\s+note|add\s+notes|write\s+note|save\s+note|quick\s+note)\b/i) ||
+      text.match(/\b(drink|log)\s+\d+\s*(glasses|ml|liters|cups)?\s*(of\s+)?(water)?/i) ||
+      text.match(/\b(start|begin)\s+(\d+)\s*(min|minute|mins)?\s*(focus|pomodoro|timer)/i)) {
     return INTENT_TYPES.ACTION_COMMAND;
   }
 
@@ -310,6 +311,8 @@ CRITICAL DIRECTIVES:
 - To create a task: include \`Create task: "<Task Title>"\` on its own line.
 - To complete a task: include \`Complete task: "<Task Title>"\` on its own line.
 - To delete a task: include \`Delete task: "<Task Title>"\` on its own line.
+- To add a note: include \`Add note: "<Note Content>"\` on its own line.
+- To delete a note: include \`Delete note: "<Note Content>"\` on its own line.
 - To create a routine: include \`Create routine: "<Routine Title>"\` on its own line.
 - To delete a routine: include \`Delete routine: "<Routine Title>"\` on its own line.
 - To create a habit: include \`Create habit: "<Habit Name>"\` on its own line.
@@ -317,7 +320,9 @@ CRITICAL DIRECTIVES:
 - To start a focus block: include \`Start focus session: <minutes> mins\` on its own line.
 - To log hydration: include \`Log water: <amount> glasses\` on its own line.
 - To mark habit complete: include \`Mark habit complete: "<Habit Name>"\` on its own line.
-The application engine renders an interactive action card allowing the user to approve and execute it with one click. For deletions, the system automatically shows a consequential confirmation warning.
+The application engine renders an interactive action card allowing the user to approve and execute it with one click.
+CRITICAL DIRECTIVE: A NOTE is NOT a TASK. When a user asks to add or save a note (e.g. "add note 'fayaz'"), NEVER create a task for it. Always output \`Add note: "<Content>"\`.
+When creating items with customizable options (routines, tasks, habits), the UI embeds interactive selection chips (Domain, Priority, Frequency, Time) so the user can directly configure fields before approving.
 
 ${responseStyleGuidance ? `STYLE & INTENT GUIDANCE:\n${responseStyleGuidance}\n` : ''}
 ${retrievedData ? `RETRIEVED APPLICATION DATA (Real Stored Records):\n${JSON.stringify(retrievedData, null, 2)}\n` : ''}

@@ -74,6 +74,27 @@ Forgive today. Log off, get a solid night of rest, and tomorrow morning we start
     else if (lower.match(/(thank you|thanks|thx|appreciate it|awesome|great job)/i)) {
       responseText = `You're very welcome! I'm always in your corner to keep your momentum strong. Let me know whenever you need anything else.`;
     }
+    // 5B1. Action Commands: Add Note
+    else if (lower.match(/(?:add|create|take|write|save|log)\s+(?:a\s+)?notes?\s*[:\-]?\s*(.+)/i) || lower.match(/note\s+down\s+(.+)/i)) {
+      const match = lower.match(/(?:add|create|take|write|save|log)\s+(?:a\s+)?notes?\s*[:\-]?\s*(.+)/i) || lower.match(/note\s+down\s+(.+)/i);
+      let rawText = match ? match[1].replace(/^(for\s+today|for\s+tomorrow|please)\s*/i, '').replace(/\s*(for\s+today|for\s+tomorrow)$/i, '').trim() : 'Note entry';
+      rawText = rawText.replace(/^["']|["']$/g, '');
+      const cleanNote = rawText.charAt(0).toUpperCase() + rawText.slice(1);
+      responseText = `Note ready to record in your Neural Scratchpad & Daily Debrief. Tap below to save:\n\nAdd note: "${cleanNote}"`;
+    }
+    // 5B2. Action Commands: Delete Note
+    else if (lower.match(/(?:delete|remove)\s+(?:the\s+)?note\s*(.*)/i)) {
+      const match = lower.match(/(?:delete|remove)\s+(?:the\s+)?note\s*(.*)/i);
+      const target = match && match[1].trim() ? match[1].trim().replace(/^["']|["']$/g, '') : 'note';
+      responseText = `⚠️ **Consequential Deletion Request**: Tap below to remove this note:\n\nDelete note: "${target}"`;
+    }
+    // 5B3. Action Commands: Create Routine
+    else if (lower.match(/(?:create|add|setup)\s+(?:a\s+)?routine\s+(?:for\s+)?(.+)/i)) {
+      const match = lower.match(/(?:create|add|setup)\s+(?:a\s+)?routine\s+(?:for\s+)?(.+)/i);
+      let rawTitle = match ? match[1].trim().replace(/^["']|["']$/g, '') : 'New Routine';
+      const cleanTitle = rawTitle.charAt(0).toUpperCase() + rawTitle.slice(1);
+      responseText = `Routine protocol drafted. You can select your preferred priority, category, and schedule in the card below before saving:\n\nCreate routine: "${cleanTitle}"`;
+    }
     // 5B. Action Commands: Create Task
     else if (lower.match(/(?:create|add)\s+(?:a\s+)?task\s+(?:to\s+)?(.+)/i)) {
       const match = lower.match(/(?:create|add)\s+(?:a\s+)?task\s+(?:to\s+)?(.+)/i);

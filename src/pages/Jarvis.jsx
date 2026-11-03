@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Bot, Sparkles, CheckSquare, Dumbbell, Utensils, Timer, Droplets, Calendar } from 'lucide-react';
+import { Bot, Sparkles, CheckSquare, Dumbbell, Utensils, Timer, Droplets, Calendar, FileText, Repeat } from 'lucide-react';
 import { useAI } from '../ai/hooks/useAI';
 import AIChat from '../ai/components/AIChat';
 import AIStatus from '../ai/components/AIStatus';
@@ -79,6 +79,8 @@ export default function Jarvis() {
         transition={{ delay: 0.1 }}
       >
         {[
+          { label: 'Capture note for today', icon: FileText, prompt: 'Add note "Review quarterly roadmap"' },
+          { label: 'Create new routine', icon: Repeat, prompt: 'Create routine "Morning Code Review"' },
           { label: 'Plan my whole day', icon: Calendar, prompt: 'Plan my entire day with focus blocks and workout' },
           { label: 'What should I work on?', icon: CheckSquare, prompt: 'What should I work on today based on my pending tasks?' },
           { label: 'Start 25m Focus', icon: Timer, prompt: 'Start a 25-minute focus session' },

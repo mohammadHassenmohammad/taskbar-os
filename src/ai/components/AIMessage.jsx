@@ -1,12 +1,18 @@
 import React, { useState } from 'react';
-import { Bot, User, Copy, Check, Trash2, CheckCircle2, X, Sparkles, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Bot, User, Copy, Check, Trash2, CheckCircle2, X, Sparkles, AlertTriangle, AlertCircle, FileText, CheckSquare, Repeat, Clock, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-export default function AIMessage({ message, onDelete, onApproveAction }) {
+export default function AIMessage({ message, onDelete, onApproveAction, onSelectOption }) {
   const [copied, setCopied] = useState(false);
   const [actionHandled, setActionHandled] = useState(false);
   const isAssistant = message.role === 'assistant';
+
+  // Interactive field configurations for proposals
+  const [selectedCategory, setSelectedCategory] = useState('Learning');
+  const [selectedPriority, setSelectedPriority] = useState('Medium');
+  const [selectedFrequency, setSelectedFrequency] = useState('daily');
+  const [selectedTime, setSelectedTime] = useState('08:00 AM');
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -15,7 +21,7 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Detect actionable suggestion in assistant message (tasks, focus, water, habits, deletions)
+  // Detect actionable suggestion in assistant message (tasks, focus, water, habits, notes, deletions)
   const extractActionProposal = (text) => {
     if (!text || !isAssistant || actionHandled) return null;
 
@@ -27,7 +33,7 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
         if (parsed.action || parsed.type) {
           return {
             type: parsed.action || parsed.type,
-            title: parsed.title || parsed.payload?.title || parsed.payload?.name || 'Action',
+            title: parsed.title || parsed.payload?.title || parsed.payload?.name || parsed.text || 'Action',
             payload: parsed.payload || parsed,
             risk: parsed.risk || (String(parsed.action || parsed.type).startsWith('delete') || String(parsed.action || parsed.type).startsWith('reset') ? 'consequential' : 'low'),
             warning: parsed.warning || (parsed.risk === 'consequential' ? 'This action is irreversible.' : null)
@@ -69,6 +75,19 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
         title: delHabitMatch[1].trim(),
         risk: 'consequential',
         warning: 'This will permanently delete this habit and reset tracked streak history.'
+      };
+    }
+
+    // 1D. Delete note (Consequential)
+    const delNoteMatch = text.match(/(?:delete|remove)\s+note[:\s]+"([^"]+)"/i) ||
+                         text.match(/Delete note[:\s]+([^\n.,]+)/i);
+    if (delNoteMatch) {
+      return {
+        type: 'delete_note',
+        title: delNoteMatch[1].trim(),
+        text: delNoteMatch[1].trim(),
+        risk: 'consequential',
+        warning: 'This will remove this note from your scratchpad & debrief logs.'
       };
     }
 
@@ -119,6 +138,19 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
       };
     }
 
+    // 3D. Add note proposal (Never convert to task!)
+    const noteMatch = text.match(/(?:add|create|save|take|write)\s+note[:\s]+"([^"]+)"/i) ||
+                      text.match(/Add note[:\s]+([^\n.,]+)/i) ||
+                      text.match(/Note captured[:\s]+"([^"]+)"/i);
+    if (noteMatch) {
+      return {
+        type: 'create_note',
+        title: noteMatch[1].trim(),
+        text: noteMatch[1].trim(),
+        risk: 'low'
+      };
+    }
+
     // 4. Start focus session proposal
     const focusMatch = text.match(/Start focus session[:\s]+(\d+)\s*(?:mins|minutes)?/i) ||
                        text.match(/(?:start|begin)\s+(\d+)-minute focus session/i);
@@ -156,6 +188,20 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
   };
 
   const actionProposal = extractActionProposal(message.content);
+
+  // Extract quick reply options (e.g. [Option Name])
+  const quickOptions = React.useMemo(() => {
+    if (!message.content || !isAssistant) return [];
+    const options = [];
+    const bracketMatches = message.content.matchAll(/\[([A-Za-z0-9\s:_-]{2,30})\]/g);
+    for (const m of bracketMatches) {
+      const opt = m[1].trim();
+      if (!['action', 'json', 'x', 'cancel', 'done', 'approved', 'dismiss'].includes(opt.toLowerCase()) && !options.includes(opt)) {
+        options.push(opt);
+      }
+    }
+    return options.slice(0, 6);
+  }, [message.content, isAssistant]);
 
   // Markdown renderer for headers, bold, bullets, inline code, and code blocks
   const renderFormattedContent = (text) => {
@@ -269,83 +315,279 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
           {renderFormattedContent(message.content)}
         </div>
 
+        {/* Quick Selection Options / Questions Chips */}
+        {quickOptions.length > 0 && onSelectOption && (
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Select Option:</span>
+            {quickOptions.map((opt, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onSelectOption(opt)}
+                style={{
+                  padding: '3px 10px',
+                  borderRadius: 8,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  background: 'rgba(99, 102, 241, 0.12)',
+                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                  color: 'var(--accent-primary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Action Proposal Card (Requires Explicit Approval) */}
         {actionProposal && !actionHandled && onApproveAction && (
           <div style={{
             marginTop: 12,
-            padding: '12px 14px',
-            borderRadius: 10,
+            padding: '14px 16px',
+            borderRadius: 12,
             background: actionProposal.risk === 'consequential' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(99, 102, 241, 0.08)',
             border: actionProposal.risk === 'consequential' ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(99, 102, 241, 0.25)',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            flexWrap: 'wrap'
+            flexDirection: 'column',
+            gap: 12
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {actionProposal.risk === 'consequential' ? (
-                <AlertTriangle size={18} color="var(--color-danger, #ef4444)" />
-              ) : (
-                <Sparkles size={16} color="var(--accent-primary)" />
-              )}
-              <div>
-                <div style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: actionProposal.risk === 'consequential' ? 'var(--color-danger, #ef4444)' : 'var(--text-primary)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5
-                }}>
-                  {actionProposal.risk === 'consequential' ? 'Consequential Action Confirmation' : 'Proposed Action'}
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
-                  {actionProposal.type === 'create_task' && `Create Task: "${actionProposal.title}"`}
-                  {actionProposal.type === 'complete_task' && `Complete Task: "${actionProposal.title}"`}
-                  {actionProposal.type === 'delete_task' && `Delete Task: "${actionProposal.title}"`}
-                  {actionProposal.type === 'create_routine' && `Create Routine: "${actionProposal.title}"`}
-                  {actionProposal.type === 'delete_routine' && `Delete Routine: "${actionProposal.title}"`}
-                  {actionProposal.type === 'create_habit' && `Create Habit: "${actionProposal.title || actionProposal.name}"`}
-                  {actionProposal.type === 'delete_habit' && `Delete Habit: "${actionProposal.title || actionProposal.name}"`}
-                  {actionProposal.type === 'start_focus' && `Start Focus Session: ${actionProposal.duration} mins`}
-                  {actionProposal.type === 'log_water' && `Log Hydration: ${actionProposal.amount} glass${actionProposal.amount > 1 ? 'es' : ''}`}
-                  {actionProposal.type === 'log_habit' && `Log Habit: "${actionProposal.title || actionProposal.name}"`}
-                  {!['create_task', 'complete_task', 'delete_task', 'create_routine', 'delete_routine', 'create_habit', 'delete_habit', 'start_focus', 'log_water', 'log_habit'].includes(actionProposal.type) &&
-                    `${actionProposal.type.replace('_', ' ')}: "${actionProposal.title}"`}
-                </div>
-                {actionProposal.warning && (
-                  <div style={{ fontSize: 11, color: 'var(--color-danger, #ef4444)', marginTop: 2 }}>
-                    ⚠️ {actionProposal.warning}
-                  </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {actionProposal.risk === 'consequential' ? (
+                  <AlertTriangle size={18} color="var(--color-danger, #ef4444)" />
+                ) : (
+                  <Sparkles size={16} color="var(--accent-primary)" />
                 )}
+                <div>
+                  <div style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: actionProposal.risk === 'consequential' ? 'var(--color-danger, #ef4444)' : 'var(--text-primary)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5
+                  }}>
+                    {actionProposal.risk === 'consequential' ? 'Consequential Action Confirmation' : 'Proposed Action'}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginTop: 2 }}>
+                    {actionProposal.type === 'create_note' && `Capture Note: "${actionProposal.text || actionProposal.title}"`}
+                    {actionProposal.type === 'delete_note' && `Delete Note: "${actionProposal.text || actionProposal.title}"`}
+                    {actionProposal.type === 'create_task' && `Create Task: "${actionProposal.title}"`}
+                    {actionProposal.type === 'complete_task' && `Complete Task: "${actionProposal.title}"`}
+                    {actionProposal.type === 'delete_task' && `Delete Task: "${actionProposal.title}"`}
+                    {actionProposal.type === 'create_routine' && `Create Routine: "${actionProposal.title}"`}
+                    {actionProposal.type === 'delete_routine' && `Delete Routine: "${actionProposal.title}"`}
+                    {actionProposal.type === 'create_habit' && `Create Habit: "${actionProposal.title || actionProposal.name}"`}
+                    {actionProposal.type === 'delete_habit' && `Delete Habit: "${actionProposal.title || actionProposal.name}"`}
+                    {actionProposal.type === 'start_focus' && `Start Focus Session: ${actionProposal.duration} mins`}
+                    {actionProposal.type === 'log_water' && `Log Hydration: ${actionProposal.amount} glass${actionProposal.amount > 1 ? 'es' : ''}`}
+                    {actionProposal.type === 'log_habit' && `Log Habit: "${actionProposal.title || actionProposal.name}"`}
+                    {!['create_note', 'delete_note', 'create_task', 'complete_task', 'delete_task', 'create_routine', 'delete_routine', 'create_habit', 'delete_habit', 'start_focus', 'log_water', 'log_habit'].includes(actionProposal.type) &&
+                      `${actionProposal.type.replace('_', ' ')}: "${actionProposal.title}"`}
+                  </div>
+                  {actionProposal.warning && (
+                    <div style={{ fontSize: 11, color: 'var(--color-danger, #ef4444)', marginTop: 2 }}>
+                      ⚠️ {actionProposal.warning}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${actionProposal.risk === 'consequential' ? 'btn-danger' : 'btn-primary'}`}
+                  onClick={() => {
+                    const finalAction = {
+                      ...actionProposal,
+                      payload: {
+                        ...(actionProposal.payload || {}),
+                        title: actionProposal.title,
+                        text: actionProposal.text,
+                        category: selectedCategory,
+                        priority: selectedPriority,
+                        dueTime: selectedTime,
+                        days: selectedFrequency === 'weekdays' ? [1, 2, 3, 4, 5] : selectedFrequency === 'weekends' ? [0, 6] : [0, 1, 2, 3, 4, 5, 6]
+                      }
+                    };
+                    onApproveAction(finalAction);
+                    setActionHandled(true);
+                  }}
+                  style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+                >
+                  <CheckCircle2 size={12} />
+                  <span>
+                    {actionProposal.risk === 'consequential' ? 'Authorize & Delete' : actionProposal.type === 'create_note' ? 'Save Note' : 'Approve & Execute'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => setActionHandled(true)}
+                  style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+                >
+                  <X size={12} />
+                  <span>Cancel</span>
+                </button>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button
-                type="button"
-                className={`btn btn-xs ${actionProposal.risk === 'consequential' ? 'btn-danger' : 'btn-primary'}`}
-                onClick={() => {
-                  onApproveAction(actionProposal);
-                  setActionHandled(true);
-                }}
-                style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
-              >
-                <CheckCircle2 size={12} />
-                <span>
-                  {actionProposal.risk === 'consequential' ? 'Authorize & Delete' : 'Approve & Execute'}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-xs"
-                onClick={() => setActionHandled(true)}
-                style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
-              >
-                <X size={12} />
-                <span>Cancel</span>
-              </button>
-            </div>
+            {/* Interactive Routine Field Customizer */}
+            {actionProposal.type === 'create_routine' && (
+              <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 10, border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Configure Routine Preferences (Optional Quick Selection):
+                </div>
+
+                {/* Domain Selector */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, minWidth: 60 }}>DOMAIN:</span>
+                  {['Learning', 'Work', 'Health', 'Fitness', 'General'].map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat)}
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        border: selectedCategory === cat ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
+                        background: selectedCategory === cat ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
+                        color: selectedCategory === cat ? 'var(--accent-primary)' : 'var(--text-secondary)'
+                      }}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Priority Selector */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, minWidth: 60 }}>PRIORITY:</span>
+                  {['High', 'Medium', 'Low'].map(pri => (
+                    <button
+                      key={pri}
+                      type="button"
+                      onClick={() => setSelectedPriority(pri)}
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        border: selectedPriority === pri ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
+                        background: selectedPriority === pri ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
+                        color: selectedPriority === pri ? 'var(--accent-primary)' : 'var(--text-secondary)'
+                      }}
+                    >
+                      {pri}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Frequency Selector */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, minWidth: 60 }}>CADENCE:</span>
+                  {[
+                    { label: 'Every Day', val: 'daily' },
+                    { label: 'Weekdays', val: 'weekdays' },
+                    { label: 'Weekends', val: 'weekends' }
+                  ].map(f => (
+                    <button
+                      key={f.val}
+                      type="button"
+                      onClick={() => setSelectedFrequency(f.val)}
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        border: selectedFrequency === f.val ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
+                        background: selectedFrequency === f.val ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
+                        color: selectedFrequency === f.val ? 'var(--accent-primary)' : 'var(--text-secondary)'
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Schedule Time Selector */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, minWidth: 60 }}>TIME:</span>
+                  {['08:00 AM', '12:00 PM', '05:00 PM', '09:00 PM'].map(tm => (
+                    <button
+                      key={tm}
+                      type="button"
+                      onClick={() => setSelectedTime(tm)}
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        border: selectedTime === tm ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
+                        background: selectedTime === tm ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
+                        color: selectedTime === tm ? 'var(--accent-primary)' : 'var(--text-secondary)'
+                      }}
+                    >
+                      {tm}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Interactive Task Field Customizer */}
+            {actionProposal.type === 'create_task' && (
+              <div style={{ padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: 10, border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>PRIORITY:</span>
+                {['High', 'Medium', 'Low'].map(pri => (
+                  <button
+                    key={pri}
+                    type="button"
+                    onClick={() => setSelectedPriority(pri)}
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: 6,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: selectedPriority === pri ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
+                      background: selectedPriority === pri ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
+                      color: selectedPriority === pri ? 'var(--accent-primary)' : 'var(--text-secondary)'
+                    }}
+                  >
+                    {pri}
+                  </button>
+                ))}
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, marginLeft: 8 }}>DOMAIN:</span>
+                {['Work', 'Learning', 'Personal', 'Health'].map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: 6,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: selectedCategory === cat ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
+                      background: selectedCategory === cat ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
+                      color: selectedCategory === cat ? 'var(--accent-primary)' : 'var(--text-secondary)'
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

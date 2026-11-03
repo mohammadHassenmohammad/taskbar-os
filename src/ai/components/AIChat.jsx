@@ -438,6 +438,7 @@ export default function AIChat({ ai }) {
                   key={msg.id}
                   message={msg}
                   onApproveAction={approveAction}
+                  onSelectOption={(text) => sendMessage(text)}
                 />
               ))}
 

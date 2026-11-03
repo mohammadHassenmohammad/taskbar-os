@@ -895,15 +895,24 @@ export const useStore = create(
       setDailyFocus: (date, text) => set((s) => { s.dailyFocus[date] = text; }),
       
       // --- NEURAL SCRATCHPAD ---
-      addQuickNote: (date, text) => set((s) => {
+      addQuickNote: (dateOrText, text) => set((s) => {
+        let targetDate = today();
+        let noteText = '';
+        if (text !== undefined) {
+          targetDate = dateOrText || today();
+          noteText = text;
+        } else {
+          noteText = dateOrText || '';
+        }
         if (!s.quickNotes) s.quickNotes = {};
-        if (!s.quickNotes[date]) s.quickNotes[date] = [];
+        if (!s.quickNotes[targetDate]) s.quickNotes[targetDate] = [];
         const id = uuidv4();
-        s.quickNotes[date].unshift({ id, text, timestamp: new Date().toISOString(), color: 'var(--accent-primary)' });
+        s.quickNotes[targetDate].unshift({ id, text: noteText, timestamp: new Date().toISOString(), color: 'var(--accent-primary)' });
       }),
       deleteQuickNote: (date, id) => set((s) => {
-        if (s.quickNotes[date]) {
-          s.quickNotes[date] = s.quickNotes[date].filter(n => n.id !== id);
+        const targetDate = date || today();
+        if (s.quickNotes && s.quickNotes[targetDate]) {
+          s.quickNotes[targetDate] = s.quickNotes[targetDate].filter(n => n.id !== id && n.text?.toLowerCase() !== id?.toLowerCase());
         }
       }),
       updateQuickNote: (date, id, text) => set((s) => {
@@ -994,14 +1003,23 @@ export const useStore = create(
         const task = tasks.find(t => t.id === taskId);
         if (task) task.reminderAt = time;
       }),
-      addMissionNote: (date, text) => set((s) => {
+      addMissionNote: (dateOrText, text) => set((s) => {
+        let targetDate = today();
+        let noteText = '';
+        if (text !== undefined) {
+          targetDate = dateOrText || today();
+          noteText = text;
+        } else {
+          noteText = dateOrText || '';
+        }
         if (!s.missionNotes) s.missionNotes = {};
-        if (!s.missionNotes[date]) s.missionNotes[date] = [];
-        s.missionNotes[date].unshift({ id: uuidv4(), text, timestamp: new Date().toISOString() });
+        if (!s.missionNotes[targetDate]) s.missionNotes[targetDate] = [];
+        s.missionNotes[targetDate].unshift({ id: uuidv4(), text: noteText, timestamp: new Date().toISOString() });
       }),
       deleteMissionNote: (date, noteId) => set((s) => {
-        if (s.missionNotes && s.missionNotes[date]) {
-          s.missionNotes[date] = s.missionNotes[date].filter(n => n.id !== noteId);
+        const targetDate = date || today();
+        if (s.missionNotes && s.missionNotes[targetDate]) {
+          s.missionNotes[targetDate] = s.missionNotes[targetDate].filter(n => n.id !== noteId && n.text?.toLowerCase() !== noteId?.toLowerCase());
         }
       }),
       editMissionNote: (date, noteId, text) => set((s) => {

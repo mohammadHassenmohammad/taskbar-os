@@ -347,16 +347,24 @@ export class ActionExecutionService {
         // ==========================================
         case 'create_routine': {
           const title = payload.title || 'New Routine';
+          const category = payload.category || 'General';
+          const priority = payload.priority || 'Medium';
+          const dueTime = payload.dueTime || payload.time || '08:00 AM';
+          const days = payload.days || [0, 1, 2, 3, 4, 5, 6];
+
           store.addRoutine({
             title,
             description: payload.description || '',
-            priority: payload.priority || 'Medium',
-            category: payload.category || 'General',
-            dueTime: payload.dueTime || '08:00 AM',
-            days: payload.days || [0, 1, 2, 3, 4, 5, 6]
+            priority,
+            category,
+            dueTime,
+            days
           });
           toast.success(`Routine created: "${title}"`, { icon: '⚡' });
-          return { success: true, message: `Added routine protocol "${title}".` };
+          return { 
+            success: true, 
+            message: `Added routine protocol "${title}" (${category}, ${priority} priority, ${dueTime}).` 
+          };
         }
 
         case 'apply_routine': {
@@ -478,6 +486,36 @@ export class ActionExecutionService {
           return {
             success: true,
             message: `Generated application data backup JSON payload (${(dataStr.length / 1024).toFixed(1)} KB).`
+          };
+        }
+
+        // ==========================================
+        // 9. NOTES & SCRATCHPAD OPERATIONS
+        // ==========================================
+        case 'create_note':
+        case 'add_note': {
+          const rawText = payload.text || payload.content || payload.title || payload.note || 'New Note';
+          const cleanText = String(rawText).replace(/^["']|["']$/g, '').trim();
+          store.addQuickNote(targetDate, cleanText);
+          store.addMissionNote(targetDate, cleanText);
+          toast.success(`Note captured: "${cleanText}"`, { icon: '📝' });
+          return {
+            success: true,
+            action: actionType,
+            message: `Captured note "${cleanText}" for ${targetDate} in Neural Scratchpad & Mission Debrief.`,
+            targetDate
+          };
+        }
+
+        case 'delete_note': {
+          const query = payload.text || payload.title || payload.id;
+          store.deleteQuickNote(targetDate, query);
+          store.deleteMissionNote(targetDate, query);
+          toast.success(`Note deleted: "${query}"`);
+          return {
+            success: true,
+            action: actionType,
+            message: `Deleted note "${query}" from ${targetDate}.`
           };
         }
 
