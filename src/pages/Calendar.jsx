@@ -15,7 +15,7 @@ export default function Calendar() {
   const { 
     tasks, submittedDays, activeDate, setActiveDate, setPage, 
     waterCompletions, applyRoutinesToDate, quickNotes, deleteQuickNote, 
-    dietEntries, setDietActiveDate, habits = [], habitLogs = {}, workouts = {}
+    dietEntries, setDietActiveDate, habits = [], habitLogs = {}, workouts = {}, projects = [], studySessions = []
   } = useStore();
   const [calendarView, setCalendarView] = useState('month'); // 'month' | 'week'
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -433,6 +433,47 @@ export default function Calendar() {
                       Diet OS →
                     </button>
                   </div>
+
+                  {/* Multi-Module Projects & Study Integration */}
+                  {(() => {
+                    const dueProjects = (projects || []).filter(p => p.deadline === selectedDate);
+                    const dateStudySessions = (studySessions || []).filter(s => s.date === selectedDate);
+                    const totalEstimatedMins = (selectedTasks || []).reduce((acc, t) => acc + (Number(t.estimatedMinutes) || 30), 0) + dateStudySessions.reduce((acc, s) => acc + (Number(s.durationMinutes) || 0), 0);
+                    const isOverloaded = totalEstimatedMins > 8 * 60;
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {isOverloaded && (
+                          <div style={{ padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 10, fontSize: 11, color: 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>
+                            ⚠️ Schedule Warning: {Math.round(totalEstimatedMins / 60)}h workload exceeds 8h capacity
+                          </div>
+                        )}
+
+                        {dueProjects.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <div style={{ fontSize: 9, fontWeight: 800, color: '#ec4899', textTransform: 'uppercase' }}>Project Deadlines Today</div>
+                            {dueProjects.map(p => (
+                              <div key={p.id} style={{ padding: '6px 10px', background: 'rgba(236,72,153,0.08)', border: '1px solid rgba(236,72,153,0.2)', borderRadius: 8, fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>
+                                📁 {p.title} ({p.category})
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {dateStudySessions.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <div style={{ fontSize: 9, fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase' }}>Study Sessions Logged</div>
+                            {dateStudySessions.map(s => (
+                              <div key={s.id} style={{ padding: '6px 10px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 8, fontSize: 11, display: 'flex', justifyContent: 'space-between' }}>
+                                <span>🎓 {s.subject} {s.topicsCovered && '(' + s.topicsCovered + ')'}</span>
+                                <strong>{s.durationMinutes}m</strong>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                 </div>
               );

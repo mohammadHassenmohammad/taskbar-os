@@ -363,24 +363,29 @@ How would you like to proceed? We can review your schedule, analyze your habits 
     const tasksDone = data.tasksCompleted !== undefined ? data.tasksCompleted : (metrics.tasksCompleted || 0);
     const focusMins = data.focusMinutes !== undefined ? data.focusMinutes : (metrics.focusMinutes || 0);
     const habitsRate = data.habitsAdherence !== undefined ? data.habitsAdherence : (metrics.habitsLogged || 0);
+    const period = data.period || 'weekly';
 
     return {
-      overallGrade: tasksDone >= 14 ? 'A' : 'B',
-      weekLabel: `Review Period (${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`,
-      overallScore: Math.min(100, Math.round(tasksDone * 5 + (focusMins / 60) * 10)),
+      title: `Tactical ${period === 'monthly' ? 'Monthly' : 'Weekly'} Debrief`,
+      period: period === 'monthly' ? 'Last 30 Days' : 'Last 7 Days',
+      overallGrade: tasksDone >= 14 ? 'A' : tasksDone >= 5 ? 'B' : 'C',
+      productivityScore: Math.min(100, Math.round(tasksDone * 5 + (focusMins / 60) * 10)),
       headline: `Solid momentum logged with ${tasksDone} completed tasks and ${focusMins} focus minutes.`,
-      keyAccomplishments: [
+      highlights: [
         `Executed ${tasksDone} operational tasks`,
         `Accumulated ${(focusMins / 60).toFixed(1)} hours of deep focus time`,
-        'Consistent daily logging maintained'
+        'Consistent daily metric tracking maintained'
       ],
+      lowlights: tasksDone === 0 ? ['No tasks marked completed in current window'] : [],
       metrics: {
         totalFocusMinutes: focusMins,
-        tasksCompleted: tasksDone
+        tasksCompleted: tasksDone,
+        habitsAdherencePct: habitsRate,
+        workoutsCompleted: data.workoutsCompleted || 0
       },
-      markdownBody: `## Weekly Tactical Debrief\n\n### Executive Summary\nDuring this period, you logged **${tasksDone} completed tasks** and accumulated **${focusMins} minutes of deep focus**.\n\n### Key Metrics\n- **Mission Follow-Through:** ${tasksDone} completed\n- **Habit Consistency:** ${habitsRate}%\n- **Focus Hours:** ${(focusMins / 60).toFixed(1)} hrs\n\n### Strategic Guidance\nMaintain steady momentum into the upcoming week by identifying top 3 priorities every evening.`,
+      markdownBody: `## ${period === 'monthly' ? 'Monthly' : 'Weekly'} Tactical Debrief\n\n### Executive Summary\nDuring this period, you logged **${tasksDone} completed tasks** and accumulated **${focusMins} minutes of deep focus**.\n\n### Key Metrics\n- **Mission Follow-Through:** ${tasksDone} completed\n- **Habit Consistency:** ${habitsRate}%\n- **Focus Hours:** ${(focusMins / 60).toFixed(1)} hrs\n\n### Strategic Guidance\nMaintain steady momentum into the upcoming cycle by identifying top 3 priorities every evening.`,
       nextWeekPriorities: [
-        'Lock in 3 high-impact priorities before Monday morning',
+        'Lock in 3 high-impact priorities before beginning the week',
         'Maintain daily habit tracking consistency',
         'Schedule two 45-minute distraction-free focus blocks'
       ],

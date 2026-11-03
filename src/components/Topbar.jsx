@@ -4,6 +4,10 @@ import { format } from 'date-fns';
 
 const PAGE_TITLES = {
   dashboard: 'Dashboard', today: "Today's Tasks", calendar: 'Calendar',
+  projects: 'Projects Hub', goals: 'Goal & Vision Planner',
+  secondBrain: 'Second Brain', learning: 'Study Centre',
+  timeIntelligence: 'Time Intelligence', automations: 'Automations Engine',
+  backup: 'Backup & Restore Centre',
   analytics: 'Analytics', focus: 'Focus Mode', report: 'Monthly Report',
   settings: 'Settings', archive: 'Archive', ai: 'Neural Insights',
   habits: 'Habits Tracker', routines: 'Daily Routines', gym: 'Fitness OS',

@@ -298,6 +298,140 @@ const defaultState = {
   // Admin & Security
   adminLogs: [],
   adminSimulation: false,
+
+  // ── NEXT-GENERATION EXPANSION SLICES ──
+  // 1. Project Management Centre
+  projects: [
+    {
+      id: 'proj_evolution',
+      title: 'TaskBar OS 2.0 Evolution',
+      description: 'Next-generation feature expansion and autonomous systems integration',
+      category: 'Work',
+      deadline: '2026-12-31',
+      status: 'active',
+      milestones: [
+        { id: 'm1', title: 'Core Store Architecture', completed: true },
+        { id: 'm2', title: 'Interactive Multi-Module Hubs', completed: false },
+        { id: 'm3', title: 'Voice & Automation System', completed: false }
+      ],
+      notes: 'All metrics dynamically verified with zero mock calculations.',
+      createdAt: new Date().toISOString()
+    }
+  ],
+
+  // 2. Goal & Vision Planner
+  goals: [
+    {
+      id: 'goal_ai_eng',
+      title: 'Master Autonomous AI Engineering',
+      description: 'Build robust agentic architectures with local deterministic fallbacks and tool execution',
+      timeHorizon: 'long_term',
+      targetDate: '2027-01-01',
+      category: 'Learning',
+      progress: 60,
+      linkedProjects: ['proj_evolution'],
+      linkedHabits: ['h2'],
+      milestones: [
+        { id: 'gm1', title: 'Intent Classification Engine', completed: true },
+        { id: 'gm2', title: 'Zero-Resurrection Safety Layer', completed: true },
+        { id: 'gm3', title: 'Voice & Speech Integration', completed: false }
+      ],
+      createdAt: new Date().toISOString()
+    }
+  ],
+
+  // 3. Second Brain (Knowledge & Memory)
+  secondBrain: [
+    {
+      id: 'brain_1',
+      title: 'Kaizen Iteration Protocol',
+      content: 'Small, daily iterative improvements compound into massive capability shifts over a 1-year timeline.',
+      type: 'idea',
+      tags: ['mindset', 'productivity', 'engineering'],
+      url: '',
+      pinned: true,
+      createdAt: new Date().toISOString()
+    }
+  ],
+  jarvisLongTermMemory: [
+    {
+      id: 'mem_1',
+      key: 'preferred_work_cadence',
+      value: 'Deep 25-minute Pomodoro focus sprints during high-energy mornings',
+      approved: true,
+      createdAt: new Date().toISOString()
+    }
+  ],
+
+  // 4. Learning and Study Centre
+  courses: [
+    {
+      id: 'course_ai_systems',
+      title: 'Full-Stack Agentic AI Systems',
+      subject: 'Computer Science',
+      instructor: 'Autonomous Systems Institute',
+      totalHours: 40,
+      completedHours: 24,
+      topics: [
+        { id: 'top_1', title: 'Intent Orchestration & Safety Boundaries', completed: true },
+        { id: 'top_2', title: 'Tool Execution & State Reconciliation', completed: true },
+        { id: 'top_3', title: 'Interactive Selection Field Configurator', completed: false }
+      ],
+      notes: 'Ensure clean deterministic fallbacks for offline operational safety.',
+      nextRevisionDate: today(),
+      createdAt: new Date().toISOString()
+    }
+  ],
+  studySessions: [],
+
+  // 5. Automation Engine
+  automations: [
+    {
+      id: 'auto_morning_prep',
+      name: 'Daily Morning Protocol Prep',
+      triggerType: 'schedule',
+      triggerConfig: { time: '08:00 AM', days: [0, 1, 2, 3, 4, 5, 6] },
+      actionType: 'apply_routines',
+      actionPayload: { notification: true },
+      enabled: true,
+      lastRun: null,
+      runHistory: []
+    },
+    {
+      id: 'auto_workout_hydration',
+      name: 'Post-Workout Hydration Prompt',
+      triggerType: 'event',
+      triggerConfig: { event: 'workout_completed' },
+      actionType: 'log_water',
+      actionPayload: { glasses: 2 },
+      enabled: true,
+      lastRun: null,
+      runHistory: []
+    }
+  ],
+
+  // 6. Custom Dashboard Builder Layout
+  dashboardWidgets: [
+    { id: 'w_health_score', type: 'health_score', title: 'Daily Health Score', visible: true, size: 'small', order: 0 },
+    { id: 'w_metrics_bar', type: 'metrics_bar', title: "Today's Core Metrics", visible: true, size: 'large', order: 1 },
+    { id: 'w_next_action', type: 'next_action', title: 'Optimal Next Action', visible: true, size: 'medium', order: 2 },
+    { id: 'w_priorities', type: 'priorities', title: "Today's Mission Priorities", visible: true, size: 'medium', order: 3 },
+    { id: 'w_active_projects', type: 'active_projects', title: 'Active Projects', visible: true, size: 'medium', order: 4 },
+    { id: 'w_active_goals', type: 'active_goals', title: 'Strategic Goals', visible: true, size: 'medium', order: 5 },
+    { id: 'w_weekly_trend', type: 'weekly_trend', title: '7-Day Score Trend', visible: true, size: 'large', order: 6 },
+    { id: 'w_daily_timeline', type: 'daily_timeline', title: 'Daily Protocol Timeline', visible: true, size: 'large', order: 7 }
+  ],
+
+  // 7. Backup & Restore History
+  backupHistory: [],
+
+  // 8. Voice & Audio Settings
+  voiceSettings: {
+    voiceInputEnabled: true,
+    voiceOutputEnabled: false,
+    rate: 1.0,
+    pitch: 1.0
+  },
 };
 
 export const useStore = create(
@@ -1931,6 +2065,500 @@ export const useStore = create(
       getGlobalConsistencyStreaks: () => getGlobalConsistencyStreaks(get()),
       calculateCorrelationData: (daysCount) => calculateCorrelationData(get(), daysCount || 14),
 
+      // ── NEXT-GENERATION EXPANSION ACTIONS ──
+      // 1. Project Management Actions
+      addProject: (proj) => set((s) => {
+        const newProj = {
+          id: proj.id || `proj_${Date.now()}`,
+          title: proj.title || 'Untitled Project',
+          description: proj.description || '',
+          category: proj.category || 'Work',
+          deadline: proj.deadline || '',
+          status: proj.status || 'active',
+          milestones: proj.milestones || [],
+          notes: proj.notes || '',
+          createdAt: new Date().toISOString()
+        };
+        s.projects = [newProj, ...(s.projects || [])];
+        toast.success(`Project "${newProj.title}" initiated`, { icon: '📁' });
+      }),
+
+      updateProject: (id, updates) => set((s) => {
+        s.projects = (s.projects || []).map(p => p.id === id ? { ...p, ...updates } : p);
+        toast.success('Project updated', { icon: '💾' });
+      }),
+
+      deleteProject: (id) => set((s) => {
+        const found = (s.projects || []).find(p => p.id === id);
+        s.projects = (s.projects || []).filter(p => p.id !== id);
+        toast.success(`Project "${found?.title || ''}" removed`, { icon: '🗑️' });
+      }),
+
+      addProjectMilestone: (projectId, title) => set((s) => {
+        s.projects = (s.projects || []).map(p => {
+          if (p.id === projectId) {
+            const ms = p.milestones || [];
+            return {
+              ...p,
+              milestones: [...ms, { id: `m_${Date.now()}`, title, completed: false }]
+            };
+          }
+          return p;
+        });
+      }),
+
+      toggleProjectMilestone: (projectId, milestoneId) => set((s) => {
+        s.projects = (s.projects || []).map(p => {
+          if (p.id === projectId) {
+            return {
+              ...p,
+              milestones: (p.milestones || []).map(m => m.id === milestoneId ? { ...m, completed: !m.completed } : m)
+            };
+          }
+          return p;
+        });
+      }),
+
+      deleteProjectMilestone: (projectId, milestoneId) => set((s) => {
+        s.projects = (s.projects || []).map(p => {
+          if (p.id === projectId) {
+            return {
+              ...p,
+              milestones: (p.milestones || []).filter(m => m.id !== milestoneId)
+            };
+          }
+          return p;
+        });
+      }),
+
+      // 2. Goal & Vision Planner Actions
+      addGoal: (goal) => set((s) => {
+        const newGoal = {
+          id: goal.id || `goal_${Date.now()}`,
+          title: goal.title || 'Untitled Goal',
+          description: goal.description || '',
+          timeHorizon: goal.timeHorizon || 'short_term',
+          targetDate: goal.targetDate || '',
+          category: goal.category || 'Personal',
+          progress: Number(goal.progress) || 0,
+          linkedProjects: goal.linkedProjects || [],
+          linkedHabits: goal.linkedHabits || [],
+          milestones: goal.milestones || [],
+          createdAt: new Date().toISOString()
+        };
+        s.goals = [newGoal, ...(s.goals || [])];
+        toast.success(`Goal "${newGoal.title}" locked into horizon`, { icon: '🎯' });
+      }),
+
+      updateGoal: (id, updates) => set((s) => {
+        s.goals = (s.goals || []).map(g => g.id === id ? { ...g, ...updates } : g);
+        toast.success('Goal updated', { icon: '🎯' });
+      }),
+
+      deleteGoal: (id) => set((s) => {
+        const found = (s.goals || []).find(g => g.id === id);
+        s.goals = (s.goals || []).filter(g => g.id !== id);
+        toast.success(`Goal "${found?.title || ''}" removed`, { icon: '🗑️' });
+      }),
+
+      addGoalMilestone: (goalId, title) => set((s) => {
+        s.goals = (s.goals || []).map(g => {
+          if (g.id === goalId) {
+            const ms = g.milestones || [];
+            return {
+              ...g,
+              milestones: [...ms, { id: `gm_${Date.now()}`, title, completed: false }]
+            };
+          }
+          return g;
+        });
+      }),
+
+      toggleGoalMilestone: (goalId, milestoneId) => set((s) => {
+        s.goals = (s.goals || []).map(g => {
+          if (g.id === goalId) {
+            const updatedMs = (g.milestones || []).map(m => m.id === milestoneId ? { ...m, completed: !m.completed } : m);
+            const doneCount = updatedMs.filter(m => m.completed).length;
+            const progress = updatedMs.length > 0 ? Math.round((doneCount / updatedMs.length) * 100) : g.progress;
+            return { ...g, milestones: updatedMs, progress };
+          }
+          return g;
+        });
+      }),
+
+      calculateGoalProgress: (goalId) => {
+        const state = get();
+        const goal = (state.goals || []).find(g => g.id === goalId);
+        if (!goal) return 0;
+        if (goal.milestones && goal.milestones.length > 0) {
+          const completed = goal.milestones.filter(m => m.completed).length;
+          return Math.round((completed / goal.milestones.length) * 100);
+        }
+        return goal.progress || 0;
+      },
+
+      // 3. Second Brain Actions
+      addBrainItem: (item) => set((s) => {
+        const newItem = {
+          id: item.id || `brain_${Date.now()}`,
+          title: item.title || 'Untitled Note',
+          content: item.content || '',
+          type: item.type || 'note',
+          tags: Array.isArray(item.tags) ? item.tags : (item.tags ? [item.tags] : []),
+          url: item.url || '',
+          pinned: !!item.pinned,
+          createdAt: new Date().toISOString()
+        };
+        s.secondBrain = [newItem, ...(s.secondBrain || [])];
+        toast.success(`Knowledge node "${newItem.title}" stored`, { icon: '🧠' });
+      }),
+
+      updateBrainItem: (id, updates) => set((s) => {
+        s.secondBrain = (s.secondBrain || []).map(b => b.id === id ? { ...b, ...updates } : b);
+        toast.success('Knowledge node updated', { icon: '🧠' });
+      }),
+
+      deleteBrainItem: (id) => set((s) => {
+        s.secondBrain = (s.secondBrain || []).filter(b => b.id !== id);
+        toast.success('Node removed from Second Brain', { icon: '🗑️' });
+      }),
+
+      togglePinBrainItem: (id) => set((s) => {
+        s.secondBrain = (s.secondBrain || []).map(b => b.id === id ? { ...b, pinned: !b.pinned } : b);
+      }),
+
+      addJarvisMemory: (key, value) => set((s) => {
+        const mem = {
+          id: `mem_${Date.now()}`,
+          key: key.toLowerCase().trim().replace(/\s+/g, '_'),
+          value,
+          approved: true,
+          createdAt: new Date().toISOString()
+        };
+        s.jarvisLongTermMemory = [mem, ...(s.jarvisLongTermMemory || []).filter(m => m.key !== mem.key)];
+        toast.success(`JARVIS memory established: ${key}`, { icon: '🤖' });
+      }),
+
+      deleteJarvisMemory: (id) => set((s) => {
+        s.jarvisLongTermMemory = (s.jarvisLongTermMemory || []).filter(m => m.id !== id);
+        toast.success('Memory purged', { icon: '🧹' });
+      }),
+
+      // 4. Learning & Study Centre Actions
+      addCourse: (course) => set((s) => {
+        const newCourse = {
+          id: course.id || `course_${Date.now()}`,
+          title: course.title || 'Untitled Course',
+          subject: course.subject || 'General',
+          instructor: course.instructor || '',
+          totalHours: Number(course.totalHours) || 10,
+          completedHours: Number(course.completedHours) || 0,
+          topics: course.topics || [],
+          notes: course.notes || '',
+          nextRevisionDate: course.nextRevisionDate || today(),
+          createdAt: new Date().toISOString()
+        };
+        s.courses = [newCourse, ...(s.courses || [])];
+        toast.success(`Course "${newCourse.title}" catalogued`, { icon: '📚' });
+      }),
+
+      updateCourse: (id, updates) => set((s) => {
+        s.courses = (s.courses || []).map(c => c.id === id ? { ...c, ...updates } : c);
+        toast.success('Course record updated', { icon: '📚' });
+      }),
+
+      deleteCourse: (id) => set((s) => {
+        s.courses = (s.courses || []).filter(c => c.id !== id);
+        toast.success('Course removed', { icon: '🗑️' });
+      }),
+
+      toggleCourseTopic: (courseId, topicId) => set((s) => {
+        s.courses = (s.courses || []).map(c => {
+          if (c.id === courseId) {
+            const updatedTopics = (c.topics || []).map(t => t.id === topicId ? { ...t, completed: !t.completed } : t);
+            return { ...c, topics: updatedTopics };
+          }
+          return c;
+        });
+      }),
+
+      logStudySession: (session) => set((s) => {
+        const dur = Number(session.durationMinutes) || 30;
+        const newSession = {
+          id: `sess_${Date.now()}`,
+          courseId: session.courseId || '',
+          subject: session.subject || 'General',
+          durationMinutes: dur,
+          topicsCovered: session.topicsCovered || '',
+          date: session.date || today(),
+          notes: session.notes || '',
+          createdAt: new Date().toISOString()
+        };
+        s.studySessions = [newSession, ...(s.studySessions || [])];
+        if (session.courseId) {
+          s.courses = (s.courses || []).map(c => {
+            if (c.id === session.courseId) {
+              const addedHours = Math.round((dur / 60) * 10) / 10;
+              return { ...c, completedHours: Math.min(c.totalHours, (c.completedHours || 0) + addedHours) };
+            }
+            return c;
+          });
+        }
+        toast.success(`Logged ${dur}m study session`, { icon: '⏱️' });
+      }),
+
+      // 5. Time Intelligence Selectors
+      getTimeIntelligenceMetrics: (daysCount = 7) => {
+        const state = get();
+        const dates = [];
+        for (let i = 0; i < daysCount; i++) {
+          dates.push(format(subDays(new Date(), i), 'yyyy-MM-dd'));
+        }
+
+        // Planned time from tasks
+        const relevantTasks = (state.tasks || []).filter(t => dates.includes(t.date));
+        const plannedMinutes = relevantTasks.reduce((acc, t) => acc + (Number(t.estimatedMinutes) || 30), 0);
+        
+        // Actual focus minutes from pomodoro completed sessions
+        const pomodoroMinutes = (state.pomodoro?.sessions || [])
+          .filter(sess => dates.includes(sess.date))
+          .reduce((acc, sess) => acc + (Number(sess.duration) || 25), 0);
+        
+        // Study minutes
+        const studyMinutes = (state.studySessions || [])
+          .filter(sess => dates.includes(sess.date))
+          .reduce((acc, sess) => acc + (Number(sess.durationMinutes) || 0), 0);
+
+        const actualMinutes = pomodoroMinutes + studyMinutes;
+
+        // Breakdown by category
+        const categoryMap = {};
+        relevantTasks.forEach(t => {
+          const cat = t.category || 'Other';
+          const mins = Number(t.estimatedMinutes) || 30;
+          categoryMap[cat] = (categoryMap[cat] || 0) + mins;
+        });
+
+        const categoryBreakdown = Object.entries(categoryMap).map(([category, minutes]) => ({
+          category,
+          minutes,
+          percentage: plannedMinutes > 0 ? Math.round((minutes / plannedMinutes) * 100) : 0
+        }));
+
+        const efficiency = plannedMinutes > 0 ? Math.round((actualMinutes / plannedMinutes) * 100) : 100;
+
+        return {
+          plannedMinutes,
+          actualMinutes,
+          pomodoroMinutes,
+          studyMinutes,
+          efficiency: Math.min(200, efficiency),
+          categoryBreakdown,
+          workloadStatus: plannedMinutes > 8 * 60 * daysCount ? 'Heavy' : plannedMinutes > 4 * 60 * daysCount ? 'Optimal' : 'Light'
+        };
+      },
+
+      // 6. Automation Engine Actions
+      addAutomation: (auto) => set((s) => {
+        const newAuto = {
+          id: auto.id || `auto_${Date.now()}`,
+          name: auto.name || 'Untitled Automation',
+          triggerType: auto.triggerType || 'schedule',
+          triggerConfig: auto.triggerConfig || {},
+          actionType: auto.actionType || 'apply_routines',
+          actionPayload: auto.actionPayload || {},
+          enabled: auto.enabled !== false,
+          lastRun: null,
+          runHistory: []
+        };
+        s.automations = [newAuto, ...(s.automations || [])];
+        toast.success(`Automation "${newAuto.name}" primed`, { icon: '⚡' });
+      }),
+
+      updateAutomation: (id, updates) => set((s) => {
+        s.automations = (s.automations || []).map(a => a.id === id ? { ...a, ...updates } : a);
+        toast.success('Automation updated', { icon: '⚡' });
+      }),
+
+      deleteAutomation: (id) => set((s) => {
+        s.automations = (s.automations || []).filter(a => a.id !== id);
+        toast.success('Automation decommissioned', { icon: '🗑️' });
+      }),
+
+      toggleAutomation: (id) => set((s) => {
+        s.automations = (s.automations || []).map(a => a.id === id ? { ...a, enabled: !a.enabled } : a);
+      }),
+
+      executeAutomation: async (id) => {
+        const state = get();
+        const auto = (state.automations || []).find(a => a.id === id);
+        if (!auto) return { success: false, error: 'Automation not found' };
+
+        const runRecord = {
+          timestamp: new Date().toISOString(),
+          status: 'success',
+          summary: ''
+        };
+
+        try {
+          if (auto.actionType === 'apply_routines') {
+            state.applyRoutinesToDate(today());
+            runRecord.summary = 'Routines synchronized for today';
+          } else if (auto.actionType === 'log_water') {
+            const glasses = auto.actionPayload?.glasses || 1;
+            for (let g = 0; g < glasses; g++) {
+              state.logWater(today());
+            }
+            runRecord.summary = `Logged ${glasses} glass(es) of water`;
+          } else if (auto.actionType === 'add_task') {
+            state.addTask({
+              title: auto.actionPayload?.title || 'Automated Task',
+              date: today(),
+              priority: auto.actionPayload?.priority || 'Medium',
+              category: auto.actionPayload?.category || 'General'
+            });
+            runRecord.summary = `Generated automated task: ${auto.actionPayload?.title || 'Automated Task'}`;
+          }
+
+          set((s) => {
+            s.automations = (s.automations || []).map(a => {
+              if (a.id === id) {
+                const history = [runRecord, ...(a.runHistory || [])].slice(0, 10);
+                return { ...a, lastRun: new Date().toISOString(), runHistory: history };
+              }
+              return a;
+            });
+          });
+
+          toast.success(`Automation executed: ${auto.name}`, { icon: '⚡' });
+          return { success: true, summary: runRecord.summary };
+        } catch (err) {
+          runRecord.status = 'failed';
+          runRecord.summary = err.message;
+          set((s) => {
+            s.automations = (s.automations || []).map(a => a.id === id ? {
+              ...a,
+              lastRun: new Date().toISOString(),
+              runHistory: [runRecord, ...(a.runHistory || [])].slice(0, 10)
+            } : a);
+          });
+          toast.error(`Automation failed: ${err.message}`);
+          return { success: false, error: err.message };
+        }
+      },
+
+      // 7. Custom Dashboard Builder Actions
+      toggleDashboardWidget: (widgetId) => set((s) => {
+        s.dashboardWidgets = (s.dashboardWidgets || []).map(w => w.id === widgetId ? { ...w, visible: !w.visible } : w);
+      }),
+
+      reorderDashboardWidgets: (widgets) => set((s) => {
+        s.dashboardWidgets = widgets;
+      }),
+
+      resetDashboardLayout: () => set((s) => {
+        s.dashboardWidgets = defaultState.dashboardWidgets;
+        toast.success('Dashboard layout restored to tactical default', { icon: '🔄' });
+      }),
+
+      // 8. Backup & Restore System
+      exportAllData: () => {
+        const state = get();
+        const exportPayload = {
+          version: '2.0.0',
+          exportedAt: new Date().toISOString(),
+          appName: 'TaskBar OS',
+          data: {
+            tasks: state.tasks,
+            projects: state.projects,
+            goals: state.goals,
+            habits: state.habits,
+            habitLogs: state.habitLogs,
+            routines: state.routines,
+            secondBrain: state.secondBrain,
+            courses: state.courses,
+            studySessions: state.studySessions,
+            workouts: state.workouts,
+            exerciseLibrary: state.exerciseLibrary,
+            dietEntries: state.dietEntries,
+            customFoods: state.customFoods,
+            waterLogs: state.waterLogs,
+            moodLogs: state.moodLogs,
+            quickNotes: state.quickNotes,
+            missionNotes: state.missionNotes,
+            pomodoro: state.pomodoro,
+            automations: state.automations,
+            settings: state.settings,
+            dashboardWidgets: state.dashboardWidgets
+          }
+        };
+        const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `taskbar_os_backup_${format(new Date(), 'yyyyMMdd_HHmm')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        set((s) => {
+          s.backupHistory = [
+            { id: `bk_${Date.now()}`, type: 'export', timestamp: new Date().toISOString(), status: 'success' },
+            ...(s.backupHistory || [])
+          ].slice(0, 20);
+        });
+
+        toast.success('System state backup exported successfully', { icon: '📦' });
+      },
+
+      importValidatedBackup: (backupJson) => {
+        try {
+          if (!backupJson || !backupJson.data || typeof backupJson.data !== 'object') {
+            throw new Error('Invalid TaskBar OS backup archive structure');
+          }
+          const { data } = backupJson;
+          set((s) => {
+            if (Array.isArray(data.tasks)) s.tasks = data.tasks;
+            if (Array.isArray(data.projects)) s.projects = data.projects;
+            if (Array.isArray(data.goals)) s.goals = data.goals;
+            if (Array.isArray(data.habits)) s.habits = data.habits;
+            if (data.habitLogs) s.habitLogs = data.habitLogs;
+            if (Array.isArray(data.routines)) s.routines = data.routines;
+            if (Array.isArray(data.secondBrain)) s.secondBrain = data.secondBrain;
+            if (Array.isArray(data.courses)) s.courses = data.courses;
+            if (Array.isArray(data.studySessions)) s.studySessions = data.studySessions;
+            if (Array.isArray(data.workouts)) s.workouts = data.workouts;
+            if (Array.isArray(data.exerciseLibrary)) s.exerciseLibrary = data.exerciseLibrary;
+            if (data.dietEntries) s.dietEntries = data.dietEntries;
+            if (data.customFoods) s.customFoods = data.customFoods;
+            if (data.waterLogs) s.waterLogs = data.waterLogs;
+            if (data.moodLogs) s.moodLogs = data.moodLogs;
+            if (Array.isArray(data.quickNotes)) s.quickNotes = data.quickNotes;
+            if (data.missionNotes) s.missionNotes = data.missionNotes;
+            if (data.pomodoro) s.pomodoro = data.pomodoro;
+            if (Array.isArray(data.automations)) s.automations = data.automations;
+            if (data.settings) s.settings = { ...s.settings, ...data.settings };
+            if (Array.isArray(data.dashboardWidgets)) s.dashboardWidgets = data.dashboardWidgets;
+
+            s.backupHistory = [
+              { id: `bk_${Date.now()}`, type: 'import', timestamp: new Date().toISOString(), status: 'success' },
+              ...(s.backupHistory || [])
+            ].slice(0, 20);
+          });
+
+          get().syncFirestore();
+          toast.success('Backup archive restored and synchronized', { icon: '✅' });
+          return { success: true };
+        } catch (err) {
+          toast.error(`Import failed: ${err.message}`, { icon: '❌' });
+          return { success: false, error: err.message };
+        }
+      },
+
+      // 9. Voice Settings
+      setVoiceSettings: (updates) => set((s) => {
+        s.voiceSettings = { ...s.voiceSettings, ...updates };
+      }),
+
       syncFirestore: async () => {
         const { user, syncLocked, isDataLoaded } = get();
         if (!user || syncLocked || !isDataLoaded) return;
@@ -1990,7 +2618,17 @@ export const useStore = create(
           dietGoals: state.dietGoals,
           walkingLogs: state.walkingLogs,
           habits: state.habits,
-          habitLogs: state.habitLogs
+          habitLogs: state.habitLogs,
+          projects: state.projects,
+          goals: state.goals,
+          secondBrain: state.secondBrain,
+          jarvisLongTermMemory: state.jarvisLongTermMemory,
+          courses: state.courses,
+          studySessions: state.studySessions,
+          automations: state.automations,
+          dashboardWidgets: state.dashboardWidgets,
+          backupHistory: state.backupHistory,
+          voiceSettings: state.voiceSettings
         });
 
         if (!dataToSync) return;
@@ -2126,6 +2764,16 @@ export const useStore = create(
         dietGoals: state.dietGoals,
         walkingLogs: state.walkingLogs,
         pomodoro: state.pomodoro,
+        projects: state.projects,
+        goals: state.goals,
+        secondBrain: state.secondBrain,
+        jarvisLongTermMemory: state.jarvisLongTermMemory,
+        courses: state.courses,
+        studySessions: state.studySessions,
+        automations: state.automations,
+        dashboardWidgets: state.dashboardWidgets,
+        backupHistory: state.backupHistory,
+        voiceSettings: state.voiceSettings,
         lastSyncTimestamp: state.lastSyncTimestamp
       }),
       onRehydrateStorage: () => (state) => {

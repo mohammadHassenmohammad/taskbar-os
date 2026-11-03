@@ -545,10 +545,96 @@ export class ApplicationTools {
       }
     });
 
+    // Search projects
+    const projects = this.context.projects || [];
+    projects.forEach(p => {
+      if (p.title && p.title.toLowerCase().includes(q)) {
+        results.push({
+          module: 'Projects',
+          title: p.title,
+          details: `Status: ${p.status} | Progress: ${p.progress}% | Category: ${p.category}`
+        });
+      }
+    });
+
+    // Search goals
+    const goals = this.context.goals || [];
+    goals.forEach(g => {
+      if (g.title && g.title.toLowerCase().includes(q)) {
+        results.push({
+          module: 'Goals',
+          title: g.title,
+          details: `Horizon: ${g.timeHorizon} | Progress: ${g.progress}%`
+        });
+      }
+    });
+
+    // Search Second Brain
+    const nodes = this.context.secondBrain || [];
+    nodes.forEach(n => {
+      if ((n.title && n.title.toLowerCase().includes(q)) || (n.content && n.content.toLowerCase().includes(q))) {
+        results.push({
+          module: 'Second Brain',
+          title: n.title,
+          details: `Type: ${n.type} | Tags: ${(n.tags || []).join(', ')}`
+        });
+      }
+    });
+
     return {
       query: q,
       totalMatches: results.length,
-      matches: results.slice(0, 10)
+      matches: results.slice(0, 15)
+    };
+  }
+
+  // ==========================================
+  // 9. NEXT-GEN MODULE TOOLS
+  // ==========================================
+
+  getProjects({ status = 'all' } = {}) {
+    const list = this.context.projects || [];
+    const filtered = status === 'all' ? list : list.filter(p => p.status === status);
+    return {
+      count: filtered.length,
+      projects: filtered
+    };
+  }
+
+  getGoals({ horizon = 'all' } = {}) {
+    const list = this.context.goals || [];
+    const filtered = horizon === 'all' ? list : list.filter(g => g.timeHorizon === horizon);
+    return {
+      count: filtered.length,
+      goals: filtered
+    };
+  }
+
+  getKnowledgeNodes({ query = '' } = {}) {
+    const list = this.context.secondBrain || [];
+    const q = (query || '').toLowerCase().trim();
+    const filtered = !q ? list : list.filter(n => 
+      (n.title && n.title.toLowerCase().includes(q)) ||
+      (n.content && n.content.toLowerCase().includes(q)) ||
+      (n.tags || []).some(t => t.toLowerCase().includes(q))
+    );
+    return {
+      count: filtered.length,
+      nodes: filtered.slice(0, 10)
+    };
+  }
+
+  getCourses() {
+    return {
+      count: (this.context.courses || []).length,
+      courses: this.context.courses || []
+    };
+  }
+
+  getAutomations() {
+    return {
+      count: (this.context.automations || []).length,
+      automations: this.context.automations || []
     };
   }
 }

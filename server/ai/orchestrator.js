@@ -27,7 +27,11 @@ export const INTENT_TYPES = {
   SEARCH_QUERY: 'SEARCH_QUERY',
   CROSS_MODULE_SYNTHESIS: 'CROSS_MODULE_SYNTHESIS',
   PLANNING: 'PLANNING',
-  GENERAL_CONVERSATION: 'GENERAL_CONVERSATION'
+  GENERAL_CONVERSATION: 'GENERAL_CONVERSATION',
+  PROJECTS_QUERY: 'PROJECTS_QUERY',
+  GOALS_QUERY: 'GOALS_QUERY',
+  BRAIN_QUERY: 'BRAIN_QUERY',
+  LEARNING_QUERY: 'LEARNING_QUERY'
 };
 
 export function classifyIntent(userText = '', recentHistory = []) {
@@ -66,6 +70,11 @@ export function classifyIntent(userText = '', recentHistory = []) {
       text.match(/\b(drink|log)\s+\d+\s*(glasses|ml|liters|cups)?\s*(of\s+)?(water)?/i) ||
       text.match(/\b(start|begin)\s+(\d+)\s*(min|minute|mins)?\s*(focus|pomodoro|timer)/i)) {
     return INTENT_TYPES.ACTION_COMMAND;
+  }
+
+  // Second Brain & Knowledge (explicit brain queries take precedence over generic search)
+  if (text.match(/\b(second brain|knowledge base|brain notes?|saved ideas?|bookmarks?)\b/i)) {
+    return INTENT_TYPES.BRAIN_QUERY;
   }
 
   // 7. Universal Search
@@ -128,6 +137,26 @@ export function classifyIntent(userText = '', recentHistory = []) {
   // 16. Focus & Pomodoro
   if (text.match(/\b(focus|pomodoro|deep work)\b/i)) {
     return INTENT_TYPES.FOCUS_QUERY;
+  }
+
+  // Projects
+  if (text.match(/\b(projects?|milestones?|initiatives?)\b/i)) {
+    return INTENT_TYPES.PROJECTS_QUERY;
+  }
+
+  // Goals & Vision
+  if (text.match(/\b(goals?|vision|long term|short term horizons?)\b/i)) {
+    return INTENT_TYPES.GOALS_QUERY;
+  }
+
+  // Second Brain & Knowledge
+  if (text.match(/\b(second brain|knowledge|brain notes?|bookmarks?|ideas?|recall|saved ideas?)\b/i)) {
+    return INTENT_TYPES.BRAIN_QUERY;
+  }
+
+  // Learning & Study
+  if (text.match(/\b(courses?|curriculum|study sessions?|subjects?|revision schedule)\b/i)) {
+    return INTENT_TYPES.LEARNING_QUERY;
   }
 
   // 17. Planning
@@ -281,6 +310,29 @@ export function orchestrateConversation({ messages = [], context = {}, preferenc
         pomodoro: tools.getPomodoroState()
       };
       responseStyleGuidance = `Summarize their focus time and Pomodoro history.`;
+      break;
+
+    case INTENT_TYPES.PROJECTS_QUERY:
+      retrievedData = tools.getProjects();
+      responseStyleGuidance = 'Review their active and completed projects, progress percentages, and upcoming milestone deliverables.';
+      break;
+
+    case INTENT_TYPES.GOALS_QUERY:
+      retrievedData = tools.getGoals();
+      responseStyleGuidance = 'Summarize their strategic goals across short-term, long-term, and vision horizons.';
+      break;
+
+    case INTENT_TYPES.BRAIN_QUERY:
+      retrievedData = tools.getKnowledgeNodes({ query: lastUserMsg });
+      responseStyleGuidance = 'Retrieve and synthesize relevant knowledge nodes, notes, or ideas from their Second Brain.';
+      break;
+
+    case INTENT_TYPES.LEARNING_QUERY:
+      retrievedData = {
+        courses: tools.getCourses(),
+        recentSessions: tools.context.studySessions || []
+      };
+      responseStyleGuidance = 'Detail their active courses, study hours, and topics covered.';
       break;
 
     case INTENT_TYPES.PLANNING:

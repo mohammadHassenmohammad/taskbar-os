@@ -11,7 +11,8 @@ import {
   MessageSquare,
   Edit2,
   Search,
-  Check
+  Check,
+  Mic, MicOff, Volume2, VolumeX
 } from 'lucide-react';
 import AIMessage from './AIMessage';
 
@@ -50,6 +51,72 @@ export default function AIChat({ ai }) {
   const [editingConvId, setEditingConvId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
   const messagesEndRef = useRef(null);
+  const [isListening, setIsListening] = useState(false);
+  const [speechEnabled, setSpeechEnabled] = useState(false);
+  const recognitionRef = useRef(null);
+
+  const toggleListening = () => {
+    if (isListening) {
+      try { recognitionRef.current?.stop(); } catch {}
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+    if (!SpeechRecognition) {
+      alert('Speech recognition is not supported in this browser. Use Chrome or Edge.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onresult = (event) => {
+        const transcript = event.results?.[0]?.[0]?.transcript;
+        if (transcript) {
+          setInputText(prev => prev ? `${prev} ${transcript}` : transcript);
+        }
+      };
+      recognition.onerror = (err) => {
+        console.warn('Speech recognition error:', err);
+        setIsListening(false);
+      };
+      recognition.onend = () => setIsListening(false);
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (e) {
+      console.error('Speech recognition failed to initialize:', e);
+      setIsListening(false);
+    }
+  };
+
+  // Text-To-Speech Output
+  useEffect(() => {
+    if (!speechEnabled || typeof window === 'undefined' || !window.speechSynthesis) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content && !isStreaming) {
+      try {
+        window.speechSynthesis.cancel();
+        const cleanText = lastMsg.content
+          .replace(/```[\s\S]*?```/g, '')
+          .replace(/Proposed Action[\s\S]*/g, '')
+          .replace(/[#*_~]/g, '')
+          .slice(0, 350);
+        if (cleanText.trim()) {
+          const utterance = new SpeechSynthesisUtterance(cleanText);
+          utterance.rate = 1.0;
+          window.speechSynthesis.speak(utterance);
+        }
+      } catch (err) {
+        console.warn('SpeechSynthesis error:', err);
+      }
+    }
+  }, [messages, speechEnabled, isStreaming]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -524,6 +591,23 @@ export default function AIChat({ ai }) {
               fontFamily: 'inherit'
             }}
           />
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={toggleListening}
+            style={{
+              height: 42, width: 42, padding: 0, borderRadius: 12,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: isListening ? '#ef4444' : 'rgba(255, 255, 255, 0.05)',
+              color: isListening ? '#ffffff' : 'var(--text-secondary)',
+              border: isListening ? '1px solid #ef4444' : '1px solid var(--border-subtle)',
+              animation: isListening ? 'pulse 1.5s infinite' : 'none'
+            }}
+            title={isListening ? 'Listening… click to stop' : 'Voice Input (Click to speak)'}
+          >
+            {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+          </button>
 
           {isStreaming ? (
             <button

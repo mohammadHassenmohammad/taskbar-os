@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  CheckCircle2, Zap, Flame, TrendingUp, ArrowRight, Activity, 
+  SlidersHorizontal, FolderKanban, Flag, CheckCircle2, Zap, Flame, TrendingUp, ArrowRight, Activity, 
   Sparkles, Target, Dumbbell, Utensils, Droplets, Timer, CheckSquare, 
   ChevronRight, HelpCircle, Footprints, X
 } from 'lucide-react';
@@ -18,8 +18,10 @@ export default function Dashboard() {
     dietEntries, user,
     getDailySnapshot, getTodayPriorities, getNextAction, getCrossModuleInsights,
     getGlobalConsistencyStreaks, setDietActiveDate, setGymActiveDate,
-    habits = [], habitLogs = {}, logHabit
+    habits = [], habitLogs = {}, logHabit,
+    projects = [], goals = [], dashboardWidgets = [], toggleDashboardWidget, resetDashboardLayout
   } = useStore();
+  const [showLayoutModal, setShowLayoutModal] = useState(false);
   
   const today = format(new Date(), 'yyyy-MM-dd');
   const snapshot = useMemo(() => getDailySnapshot(today), [getDailySnapshot, today]);
@@ -151,7 +153,18 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* Daily Score & Grade Badge */}
+        {/* Customize Layout Button & Daily Score */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button 
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowLayoutModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
+          >
+            <SlidersHorizontal size={14} />
+            <span>Customize Layout</span>
+          </button>
+
+          {/* Daily Score & Grade Badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'rgba(0,0,0,0.3)', padding: '12px 20px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)' }}>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Daily Health Score</div>
@@ -169,7 +182,8 @@ export default function Dashboard() {
             {snapshot?.grade || '—'}
           </div>
         </div>
-      </motion.div>
+      </div>
+    </motion.div>
 
 
       {/* --- TODAY'S OVERVIEW BAR (6 CORE METRICS) --- */}
@@ -586,6 +600,89 @@ export default function Dashboard() {
             </motion.div>
           )}
 
+          {/* Active Projects Widget */}
+          {projects.filter(p => p.status !== 'completed').length > 0 && (
+            <motion.div 
+              className="card"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{ padding: '18px 20px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <FolderKanban size={16} color="var(--accent-primary)" />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Active Strategic Projects
+                  </span>
+                </div>
+                <button 
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => setPage('projects')}
+                  style={{ fontSize: 11, color: 'var(--accent-primary)', fontWeight: 700 }}
+                >
+                  All Projects →
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {projects.filter(p => p.status !== 'completed').slice(0, 3).map(p => {
+                  const ms = p.milestones || [];
+                  const done = ms.filter(m => m.completed).length;
+                  const pct = ms.length > 0 ? Math.round((done / ms.length) * 100) : 0;
+
+                  return (
+                    <div key={p.id} onClick={() => setPage('projects')} style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 8, cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{p.title}</span>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent-primary)' }}>{pct}%</span>
+                      </div>
+                      <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent-primary)' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Strategic Goals Widget */}
+          {goals.length > 0 && (
+            <motion.div 
+              className="card"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{ padding: '18px 20px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Flag size={16} color="#10b981" />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Strategic Horizons & Goals
+                  </span>
+                </div>
+                <button 
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => setPage('goals')}
+                  style={{ fontSize: 11, color: '#10b981', fontWeight: 700 }}
+                >
+                  All Goals →
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {goals.slice(0, 3).map(g => (
+                  <div key={g.id} onClick={() => setPage('goals')} style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 8, cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{g.title}</span>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: '#10b981', textTransform: 'uppercase' }}>{g.timeHorizon?.replace('_', ' ')}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           {/* Real Cross-Module AI Insights */}
           {crossInsights.length > 0 && (
             <div className="card" style={{ padding: 20, background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
@@ -756,6 +853,70 @@ export default function Dashboard() {
         </div>
       </div>
 
+    
+      {/* Custom Dashboard Builder Modal */}
+      {showLayoutModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+          backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 99999, padding: 16
+        }}>
+          <div className="card" style={{ maxWidth: 480, width: '100%', padding: 24, background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>
+                Custom Dashboard Layout
+              </h2>
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowLayoutModal(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>
+              Configure active modular widgets displayed on your primary command dashboard.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+              {(dashboardWidgets || []).map(w => (
+                <div
+                  key={w.id}
+                  onClick={() => toggleDashboardWidget(w.id)}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '10px 14px', background: 'var(--bg-elevated)', borderRadius: 10,
+                    cursor: 'pointer', border: w.visible ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)'
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 700, color: w.visible ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                    {w.title}
+                  </span>
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
+                    background: w.visible ? 'rgba(99,102,241,0.2)' : 'var(--bg-card)',
+                    color: w.visible ? 'var(--accent-primary)' : 'var(--text-muted)'
+                  }}>
+                    {w.visible ? 'Visible' : 'Hidden'}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={resetDashboardLayout}
+                style={{ fontSize: 11, color: 'var(--text-muted)' }}
+              >
+                Reset Default
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowLayoutModal(false)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

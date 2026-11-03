@@ -519,6 +519,111 @@ export class ActionExecutionService {
           };
         }
 
+        case 'create_project': {
+          store.addProject({
+            title: payload.title || payload.name,
+            description: payload.description || '',
+            category: payload.category || 'Work',
+            deadline: payload.deadline || '',
+            milestones: Array.isArray(payload.milestones) ? payload.milestones.map(m => ({ id: `m_${Date.now()}_${Math.random()}`, title: typeof m === 'string' ? m : m.title, completed: false })) : []
+          });
+          return {
+            success: true,
+            action: actionType,
+            message: `Initiated project "${payload.title || payload.name}".`
+          };
+        }
+
+        case 'delete_project': {
+          const proj = (store.projects || []).find(p => p.id === payload.id || normStr(p.title) === normStr(payload.title || payload.name));
+          if (!proj) throw new Error(`Project "${payload.title || payload.name || payload.id}" not found.`);
+          store.deleteProject(proj.id);
+          return {
+            success: true,
+            action: actionType,
+            message: `Deleted project "${proj.title}".`
+          };
+        }
+
+        case 'create_goal': {
+          store.addGoal({
+            title: payload.title || payload.name,
+            description: payload.description || '',
+            category: payload.category || 'Personal',
+            timeHorizon: payload.timeHorizon || 'short_term',
+            targetDate: payload.targetDate || ''
+          });
+          return {
+            success: true,
+            action: actionType,
+            message: `Defined strategic goal "${payload.title || payload.name}".`
+          };
+        }
+
+        case 'delete_goal': {
+          const g = (store.goals || []).find(goal => goal.id === payload.id || normStr(goal.title) === normStr(payload.title || payload.name));
+          if (!g) throw new Error(`Goal "${payload.title || payload.name || payload.id}" not found.`);
+          store.deleteGoal(g.id);
+          return {
+            success: true,
+            action: actionType,
+            message: `Deleted goal "${g.title}".`
+          };
+        }
+
+        case 'save_to_brain':
+        case 'add_brain_item': {
+          store.addBrainItem({
+            title: payload.title || 'Knowledge Node',
+            content: payload.content || payload.text || '',
+            type: payload.type || 'note',
+            tags: payload.tags || []
+          });
+          return {
+            success: true,
+            action: actionType,
+            message: `Stored node "${payload.title || 'Knowledge Node'}" in Second Brain.`
+          };
+        }
+
+        case 'log_study_session': {
+          store.logStudySession({
+            courseId: payload.courseId || '',
+            subject: payload.subject || 'General',
+            durationMinutes: Number(payload.durationMinutes || payload.duration) || 30,
+            topicsCovered: payload.topicsCovered || payload.topic || '',
+            date: targetDate
+          });
+          return {
+            success: true,
+            action: actionType,
+            message: `Logged ${payload.durationMinutes || 30}m study session for ${payload.subject || 'General'}.`
+          };
+        }
+
+        case 'create_automation': {
+          store.addAutomation({
+            name: payload.name || 'Automated Protocol',
+            triggerType: payload.triggerType || 'schedule',
+            triggerConfig: payload.triggerConfig || { time: '08:00 AM' },
+            actionType: payload.actionType || 'apply_routines'
+          });
+          return {
+            success: true,
+            action: actionType,
+            message: `Primed automation "${payload.name || 'Automated Protocol'}".`
+          };
+        }
+
+        case 'add_memory': {
+          store.addJarvisMemory(payload.key, payload.value);
+          return {
+            success: true,
+            action: actionType,
+            message: `Established persistent memory for "${payload.key}".`
+          };
+        }
+
         default:
           throw new Error(`Unrecognized application action: "${actionType}"`);
       }

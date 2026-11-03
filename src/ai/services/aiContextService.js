@@ -308,6 +308,49 @@ export function prepareFullContext(state) {
     context.wellness = prepareWellnessContext(state);
   }
 
+  // Next-Gen Feature Expansion Slices
+  context.projects = (state.projects || []).map(p => ({
+    id: p.id,
+    title: p.title,
+    category: p.category,
+    status: p.status,
+    deadline: p.deadline,
+    progress: (p.milestones || []).length > 0 ? Math.round(((p.milestones || []).filter(m => m.completed).length / p.milestones.length) * 100) : 0,
+    milestones: p.milestones || []
+  }));
+
+  context.goals = (state.goals || []).map(g => ({
+    id: g.id,
+    title: g.title,
+    timeHorizon: g.timeHorizon,
+    category: g.category,
+    progress: g.progress || 0
+  }));
+
+  context.secondBrain = (state.secondBrain || []).slice(0, 20).map(b => ({
+    id: b.id,
+    title: b.title,
+    type: b.type,
+    tags: b.tags,
+    content: (b.content || '').slice(0, 150)
+  }));
+
+  context.jarvisLongTermMemory = state.jarvisLongTermMemory || [];
+  context.courses = (state.courses || []).map(c => ({
+    id: c.id,
+    title: c.title,
+    subject: c.subject,
+    completedHours: c.completedHours,
+    totalHours: c.totalHours
+  }));
+  context.studySessions = (state.studySessions || []).slice(0, 10);
+  context.automations = (state.automations || []).map(a => ({
+    id: a.id,
+    name: a.name,
+    enabled: a.enabled,
+    actionType: a.actionType
+  }));
+
   return context;
 }
 

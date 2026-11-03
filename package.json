@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "electron:dev": "electron .",
     "electron:build": "vite build && electron-builder",
-    "test": "node src/lib/__tests__/systemVerification.test.js && node src/lib/__tests__/aiSystemVerification.test.js && node src/lib/__tests__/companionVerification.test.js",
+    "test": "node src/lib/__tests__/systemVerification.test.js && node src/lib/__tests__/aiSystemVerification.test.js && node src/lib/__tests__/companionVerification.test.js && node src/lib/__tests__/nextGenVerification.test.js",
     "test:ai": "node src/lib/__tests__/aiSystemVerification.test.js",
     "serve:api": "node server/index.js"
   },

@@ -255,20 +255,47 @@ Return JSON with:
     // E. Weekly / Monthly Report Endpoint
     if (urlPath.endsWith('/report')) {
       const reportData = body.data || {};
+      const period = body.period || 'weekly';
       let report;
       let usedProvider = provider.name;
 
       try {
-        report = await provider.generateWeeklyReport(reportData);
+        report = await provider.generateWeeklyReport({ ...reportData, period });
       } catch (err) {
         console.warn(`[AI Handler] Weekly report failed on ${provider.name}. Falling back to LocalDeterministicProvider:`, err.message);
         usedProvider = 'local_deterministic';
-        report = await localFallback.generateWeeklyReport(reportData);
+        report = await localFallback.generateWeeklyReport({ ...reportData, period });
       }
+
+      // Reconcile and normalize fields to guarantee frontend schema compatibility
+      const metrics = report.metrics || report.productivityMetrics || {};
+      const standardReport = {
+        title: report.title || `Tactical ${period === 'monthly' ? 'Monthly' : 'Weekly'} Debrief`,
+        period: report.period || (period === 'monthly' ? 'Last 30 Days' : 'Last 7 Days'),
+        overallGrade: report.overallGrade || (report.overallScore >= 80 ? 'A' : report.overallScore >= 60 ? 'B' : 'C'),
+        productivityScore: report.productivityScore !== undefined ? report.productivityScore : (report.overallScore !== undefined ? report.overallScore : 75),
+        highlights: report.highlights || report.keyAccomplishments || [
+          `Logged active operational tracking`,
+          `Maintained daily check-ins`
+        ],
+        lowlights: report.lowlights || [],
+        metrics: {
+          tasksCompleted: metrics.tasksCompleted ?? reportData.productivityMetrics?.tasksCompleted ?? 0,
+          totalFocusMinutes: metrics.totalFocusMinutes ?? metrics.focusMinutes ?? reportData.productivityMetrics?.focusMinutes ?? 0,
+          habitsAdherencePct: metrics.habitsAdherencePct ?? metrics.habitsLogged ?? reportData.productivityMetrics?.habitsLogged ?? 0,
+          workoutsCompleted: metrics.workoutsCompleted ?? 0
+        },
+        markdownBody: report.markdownBody || report.headline || 'Weekly performance review synthesized from active TaskBar records.',
+        nextWeekPriorities: report.nextWeekPriorities || report.strategicRecommendations || [
+          'Maintain daily operational logging cadence',
+          'Focus on completing high-priority objectives'
+        ],
+        isLocalFallback: usedProvider === 'local_deterministic' || !!report.isLocalFallback
+      };
 
       res.statusCode = 200;
       res.end(JSON.stringify({
-        report,
+        report: standardReport,
         provider: usedProvider,
         timestamp: new Date().toISOString()
       }));

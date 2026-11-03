@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   ChevronLeft, ChevronRight, LayoutDashboard, CheckSquare, Calendar, BarChart3, 
   Timer, Sparkles, FileText, Archive, Settings, Repeat, Zap, X, Dumbbell, 
-  Utensils, LogOut, HelpCircle, RefreshCw, Shield, Target, Bot
+  Utensils, LogOut, HelpCircle, RefreshCw, Shield, Target, Bot, FolderKanban, Flag, Brain, GraduationCap, Clock, Cpu, Database
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,22 +14,28 @@ const NAV_ITEMS = [
     { id: 'jarvis', label: 'JARVIS Control', icon: Bot, badge: 'AI' },
     { id: 'today', label: 'Today Tasks', icon: CheckSquare },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
+  ]},
+  { section: 'Execution & Roadmaps', items: [
+    { id: 'projects', label: 'Projects', icon: FolderKanban },
+    { id: 'goals', label: 'Goals & Vision', icon: Flag },
     { id: 'habits', label: 'Habits', icon: Target },
     { id: 'routines', label: 'Routines', icon: Repeat },
+  ]},
+  { section: 'Intelligence & Learning', items: [
+    { id: 'secondBrain', label: 'Second Brain', icon: Brain },
+    { id: 'learning', label: 'Study Hub', icon: GraduationCap },
+    { id: 'timeIntelligence', label: 'Time Allocation', icon: Clock },
+    { id: 'automations', label: 'Automations', icon: Cpu },
+    { id: 'ai', label: 'AI Insights', icon: Sparkles },
   ]},
   { section: 'Health & Fitness', items: [
     { id: 'gym', label: 'Fitness OS', icon: Dumbbell },
     { id: 'diet', label: 'Diet OS', icon: Utensils },
-  ]},
-  { section: 'Productivity', items: [
     { id: 'focus', label: 'Focus Mode', icon: Timer },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   ]},
-  { section: 'Intelligence', items: [
-    { id: 'ai', label: 'AI Insights', icon: Sparkles },
-    { id: 'report', label: 'Monthly Report', icon: FileText },
-  ]},
   { section: 'System', items: [
+    { id: 'backup', label: 'Backup & Restore', icon: Database },
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'archive', label: 'Archive', icon: Archive },
     { id: 'admin', label: 'Admin Console', icon: Shield },

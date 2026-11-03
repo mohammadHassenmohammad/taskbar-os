@@ -24,6 +24,13 @@ import Habits from './pages/Habits';
 import Gym from './pages/Gym';
 import Diet from './pages/Diet';
 import Admin from './pages/Admin';
+import Projects from './pages/Projects';
+import Goals from './pages/Goals';
+import SecondBrain from './pages/SecondBrain';
+import Learning from './pages/Learning';
+import TimeIntelligence from './pages/TimeIntelligence';
+import Automations from './pages/Automations';
+import BackupRestore from './pages/BackupRestore';
 import Auth from './components/Auth';
 import BottomNav from './components/BottomNav';
 import QuickLogBar from './components/QuickLogBar';
@@ -40,6 +47,9 @@ const PAGES = {
   settings: Settings, archive: Archive, ai: AIInsights,
   routines: Routines, habits: Habits, gym: Gym, diet: Diet, guide: Guide,
   admin: Admin,
+  projects: Projects, goals: Goals, secondBrain: SecondBrain,
+  learning: Learning, timeIntelligence: TimeIntelligence, automations: Automations,
+  backup: BackupRestore,
 };
 
 export default function App() {
