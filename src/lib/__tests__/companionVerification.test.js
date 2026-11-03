@@ -49,6 +49,11 @@ async function runTestSuite() {
   assert(classifyIntent('what routines do I have scheduled?') === INTENT_TYPES.ROUTINES_QUERY, 'Classifies routine query as ROUTINES_QUERY');
   assert(classifyIntent('what should I work on today?') === INTENT_TYPES.CROSS_MODULE_SYNTHESIS, 'Classifies daily focus question as CROSS_MODULE_SYNTHESIS');
   assert(classifyIntent('find code review task') === INTENT_TYPES.SEARCH_QUERY, 'Classifies search inquiry as SEARCH_QUERY');
+  assert(classifyIntent('create task finish backend audit') === INTENT_TYPES.ACTION_COMMAND, 'Classifies "create task" as ACTION_COMMAND');
+  assert(classifyIntent('complete task code review') === INTENT_TYPES.ACTION_COMMAND, 'Classifies "complete task" as ACTION_COMMAND');
+  assert(classifyIntent('delete task old meeting') === INTENT_TYPES.ACTION_COMMAND, 'Classifies "delete task" as ACTION_COMMAND');
+  assert(classifyIntent('start 25 min focus timer') === INTENT_TYPES.ACTION_COMMAND, 'Classifies "start 25 min focus timer" as ACTION_COMMAND');
+  assert(classifyIntent('log 2 glasses of water') === INTENT_TYPES.ACTION_COMMAND, 'Classifies "log 2 glasses of water" as ACTION_COMMAND');
 
   // --- 2. SELECTIVE DATA ORCHESTRATION ---
   console.log('\n--- 2. SELECTIVE DATA ORCHESTRATION ---');

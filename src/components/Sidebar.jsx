@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   ChevronLeft, ChevronRight, LayoutDashboard, CheckSquare, Calendar, BarChart3, 
   Timer, Sparkles, FileText, Archive, Settings, Repeat, Zap, X, Dumbbell, 
-  Utensils, LogOut, HelpCircle, RefreshCw, Shield, Target
+  Utensils, LogOut, HelpCircle, RefreshCw, Shield, Target, Bot
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,24 +11,27 @@ import { createPortal } from 'react-dom';
 const NAV_ITEMS = [
   { section: 'Main', items: [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'today', label: 'Today', icon: CheckSquare },
+    { id: 'jarvis', label: 'JARVIS Control', icon: Bot, badge: 'AI' },
+    { id: 'today', label: 'Today Tasks', icon: CheckSquare },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
+    { id: 'habits', label: 'Habits', icon: Target },
+    { id: 'routines', label: 'Routines', icon: Repeat },
+  ]},
+  { section: 'Health & Fitness', items: [
     { id: 'gym', label: 'Fitness OS', icon: Dumbbell },
     { id: 'diet', label: 'Diet OS', icon: Utensils },
   ]},
   { section: 'Productivity', items: [
-    { id: 'habits', label: 'Habits', icon: Target },
-    { id: 'routines', label: 'Routines', icon: Repeat },
     { id: 'focus', label: 'Focus Mode', icon: Timer },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'ai', label: 'AI Insights', icon: Sparkles },
   ]},
-  { section: 'Reports', items: [
+  { section: 'Intelligence', items: [
+    { id: 'ai', label: 'AI Insights', icon: Sparkles },
     { id: 'report', label: 'Monthly Report', icon: FileText },
-    { id: 'archive', label: 'Archive', icon: Archive },
   ]},
   { section: 'System', items: [
     { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'archive', label: 'Archive', icon: Archive },
     { id: 'admin', label: 'Admin Console', icon: Shield },
     { id: 'guide', label: 'Manual', icon: HelpCircle },
   ]},
@@ -156,8 +159,23 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
                       {!collapsed && (
                         <motion.span className="nav-label"
                           initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.15 }}>
-                          {item.label}
+                          exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.15 }}
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}
+                        >
+                          <span>{item.label}</span>
+                          {item.badge && (
+                            <span style={{
+                              fontSize: 9,
+                              fontWeight: 900,
+                              padding: '1px 5px',
+                              borderRadius: 4,
+                              background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
+                              color: '#ffffff',
+                              letterSpacing: 0.5
+                            }}>
+                              {item.badge}
+                            </span>
+                          )}
                         </motion.span>
                       )}
                     </AnimatePresence>

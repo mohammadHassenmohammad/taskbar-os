@@ -10,8 +10,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 export default function CommandPalette({ onClose, onOpenCreateTask }) {
   const { 
-    tasks, habits = [], setActiveDate, setPage, 
-    theme, toggleTheme, logWater, startPomodoro 
+    tasks, habits = [], routines = [], workouts = {}, dietEntries = {},
+    setActiveDate, setPage, theme, toggleTheme, logWater, startPomodoro 
   } = useStore();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -20,26 +20,38 @@ export default function CommandPalette({ onClose, onOpenCreateTask }) {
   // Navigation pages list
   const pages = useMemo(() => [
     { id: 'dashboard', label: 'Dashboard', icon: Zap, category: 'Navigation', shortcut: 'G D' },
+    { id: 'jarvis', label: 'JARVIS Control Centre', icon: Bot, category: 'Navigation', shortcut: 'G J' },
     { id: 'today', label: 'Today Tasks', icon: CheckSquare, category: 'Navigation', shortcut: 'G T' },
     { id: 'habits', label: 'Habit Tracker', icon: Target, category: 'Navigation', shortcut: 'G H' },
-    { id: 'gym', label: 'Gym & Workouts', icon: Dumbbell, category: 'Navigation', shortcut: 'G W' },
-    { id: 'diet', label: 'Diet & Nutrition', icon: Utensils, category: 'Navigation', shortcut: 'G N' },
-    { id: 'focus', label: 'Focus & Pomodoro', icon: Clock, category: 'Navigation', shortcut: 'G F' },
-    { id: 'calendar', label: 'Calendar & Weekly Planner', icon: Calendar, category: 'Navigation', shortcut: 'G C' },
-    { id: 'analytics', label: 'Analytics & Insights', icon: BarChart2, category: 'Navigation', shortcut: 'G A' },
-    { id: 'routines', label: 'Routines & Rituals', icon: Sparkles, category: 'Navigation', shortcut: 'G R' },
-    { id: 'ai', label: 'Tactical AI Intelligence', icon: Brain, category: 'Navigation', shortcut: 'G I' },
-    { id: 'settings', label: 'Settings & Cloud Backup', icon: Settings, category: 'Navigation', shortcut: 'G S' },
-    { id: 'admin', label: 'Admin & System Diagnostics', icon: Shield, category: 'Navigation', shortcut: 'G X' },
+    { id: 'gym', label: 'Fitness OS', icon: Dumbbell, category: 'Navigation', shortcut: 'G W' },
+    { id: 'diet', label: 'Diet OS', icon: Utensils, category: 'Navigation', shortcut: 'G N' },
+    { id: 'focus', label: 'Focus Mode', icon: Clock, category: 'Navigation', shortcut: 'G F' },
+    { id: 'calendar', label: 'Calendar', icon: Calendar, category: 'Navigation', shortcut: 'G C' },
+    { id: 'analytics', label: 'Analytics', icon: BarChart2, category: 'Navigation', shortcut: 'G A' },
+    { id: 'routines', label: 'Routines', icon: Sparkles, category: 'Navigation', shortcut: 'G R' },
+    { id: 'ai', label: 'AI Insights & Reports', icon: Brain, category: 'Navigation', shortcut: 'G I' },
+    { id: 'settings', label: 'Settings', icon: Settings, category: 'Navigation', shortcut: 'G S' },
+    { id: 'admin', label: 'Admin Console', icon: Shield, category: 'Navigation', shortcut: 'G X' },
   ], []);
 
   // Quick actions list
   const quickActions = useMemo(() => [
     {
-      id: 'action-consult-ai',
-      label: 'Consult AI Assistant & Planner',
-      subtitle: 'Ask questions or synthesize daily schedules',
+      id: 'action-consult-jarvis',
+      label: 'Open JARVIS Autonomous Control',
+      subtitle: 'Execute natural-language commands & chat',
       icon: Bot,
+      category: 'Actions',
+      action: () => {
+        setPage('jarvis');
+        onClose();
+      }
+    },
+    {
+      id: 'action-consult-ai',
+      label: 'Consult AI Daily Planner',
+      subtitle: 'Synthesize optimal daily schedules',
+      icon: Brain,
       category: 'Actions',
       action: () => {
         setPage('ai');
@@ -107,11 +119,13 @@ export default function CommandPalette({ onClose, onOpenCreateTask }) {
     }
   ], [onClose, onOpenCreateTask, setPage, startPomodoro, theme, toggleTheme, logWater, setActiveDate]);
 
-  // Matching tasks across all dates
-  const matchingTasks = useMemo(() => {
+  // Matching cross-module records (Tasks, Habits, Routines, Workouts)
+  const matchingRecords = useMemo(() => {
     if (!query.trim() || query.trim().length < 2) return [];
     const q = query.toLowerCase();
     const list = [];
+
+    // 1. Tasks
     Object.entries(tasks || {}).forEach(([date, dayTasks]) => {
       (dayTasks || []).forEach(t => {
         if (
@@ -136,8 +150,62 @@ export default function CommandPalette({ onClose, onOpenCreateTask }) {
         }
       });
     });
-    return list.slice(0, 6);
-  }, [query, tasks, setActiveDate, setPage, onClose]);
+
+    // 2. Habits
+    (habits || []).forEach(h => {
+      const name = h.name || h.title || '';
+      if (name.toLowerCase().includes(q) || (h.category && h.category.toLowerCase().includes(q))) {
+        list.push({
+          id: `habit-${h.id}`,
+          label: `${h.icon || '🌟'} ${name}`,
+          subtitle: `Streak: ${h.streak || 0} days · ${h.category || 'Habit'}`,
+          category: 'Habits',
+          icon: Target,
+          action: () => {
+            setPage('habits');
+            onClose();
+          }
+        });
+      }
+    });
+
+    // 3. Routines
+    (routines || []).forEach(r => {
+      if (r.title && r.title.toLowerCase().includes(q)) {
+        list.push({
+          id: `routine-${r.id}`,
+          label: r.title,
+          subtitle: `Routine Protocol · ${r.priority || 'Medium'}`,
+          category: 'Routines',
+          icon: Sparkles,
+          action: () => {
+            setPage('routines');
+            onClose();
+          }
+        });
+      }
+    });
+
+    // 4. Workouts
+    Object.entries(workouts || {}).forEach(([date, w]) => {
+      if (w && w.name && w.name.toLowerCase().includes(q)) {
+        list.push({
+          id: `workout-${date}`,
+          label: w.name,
+          subtitle: `${date} · ${w.completed ? 'Completed' : 'Planned Session'}`,
+          category: 'Fitness',
+          icon: Dumbbell,
+          action: () => {
+            setActiveDate(date);
+            setPage('gym');
+            onClose();
+          }
+        });
+      }
+    });
+
+    return list.slice(0, 10);
+  }, [query, tasks, habits, routines, workouts, setActiveDate, setPage, onClose]);
 
   // Combined filtered items
   const filteredItems = useMemo(() => {
@@ -172,8 +240,8 @@ export default function CommandPalette({ onClose, onOpenCreateTask }) {
       a.label.toLowerCase().includes(q) || (a.subtitle && a.subtitle.toLowerCase().includes(q))
     );
 
-    return [...matchedActions, ...matchedPages, ...matchingTasks];
-  }, [query, pages, quickActions, matchingTasks, setPage, onClose]);
+    return [...matchedActions, ...matchedPages, ...matchingRecords];
+  }, [query, pages, quickActions, matchingRecords, setPage, onClose]);
 
   // Keep selected index in bounds
   useEffect(() => {

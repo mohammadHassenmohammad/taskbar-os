@@ -18,6 +18,7 @@ import Settings from './pages/Settings';
 import Archive from './pages/Archive';
 import Guide from './pages/Guide';
 import AIInsights from './pages/AIInsights';
+import Jarvis from './pages/Jarvis';
 import Routines from './pages/Routines';
 import Habits from './pages/Habits';
 import Gym from './pages/Gym';
@@ -34,7 +35,7 @@ import { NotificationService } from './lib/notifications';
 import { App as CapApp } from '@capacitor/app';
 
 const PAGES = {
-  dashboard: Dashboard, today: TodayTasks, calendar: Calendar,
+  dashboard: Dashboard, jarvis: Jarvis, today: TodayTasks, calendar: Calendar,
   analytics: Analytics, focus: FocusMode, report: MonthlyReport,
   settings: Settings, archive: Archive, ai: AIInsights,
   routines: Routines, habits: Habits, gym: Gym, diet: Diet, guide: Guide,

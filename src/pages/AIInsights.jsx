@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Brain, TrendingUp, AlertTriangle, Zap, Target, Calendar, 
   Activity, Lightbulb, MessageSquare, FileText, CheckCircle2,
-  RefreshCw, Dumbbell, Utensils, Clock, Sparkles
+  RefreshCw, Dumbbell, Utensils, Clock, Sparkles, Bot
 } from 'lucide-react';
 import { 
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, 
@@ -81,7 +81,7 @@ export default function AIInsights() {
     setPage, setDietActiveDate, setGymActiveDate 
   } = store;
 
-  const [activeTab, setActiveTab] = useState('chat'); // Default directly to clean conversational assistant
+  const [activeTab, setActiveTab] = useState('overview'); // Analytical performance & trends overview
   const [reportPeriod, setReportPeriod] = useState('weekly');
   const [suggestions, setSuggestions] = useState([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -244,27 +244,27 @@ export default function AIInsights() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: 'var(--shadow-glow)', fontSize: 20,
           }}>
-            🤖
+            📊
           </div>
           <div>
             <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text-primary)' }}>
-              JARVIS Assistant
+              AI Insights & Intelligence
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Your personal AI companion for tasks, habits & planning
+              Data-backed analytics, habit consistency & strategic reports
             </div>
           </div>
         </div>
 
         {/* Tab switcher */}
-        <div style={{ display: 'flex', background: 'var(--bg-elevated)', padding: 4, borderRadius: 12, border: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: 2 }}>
+        <div style={{ display: 'flex', background: 'var(--bg-elevated)', padding: 4, borderRadius: 12, border: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: 4 }}>
           <button
-            className={`btn btn-sm ${activeTab === 'chat' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setActiveTab('chat')}
+            className={`btn btn-sm ${activeTab === 'overview' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('overview')}
             style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8 }}
           >
-            <MessageSquare size={14} style={{ marginRight: 6 }} />
-            Assistant
+            <Brain size={14} style={{ marginRight: 6 }} />
+            Insights & Trends
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'planner' ? 'btn-primary' : 'btn-ghost'}`}
@@ -275,20 +275,20 @@ export default function AIInsights() {
             Daily Planner
           </button>
           <button
-            className={`btn btn-sm ${activeTab === 'overview' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setActiveTab('overview')}
-            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8 }}
-          >
-            <Brain size={14} style={{ marginRight: 6 }} />
-            Insights & Health
-          </button>
-          <button
             className={`btn btn-sm ${activeTab === 'reports' ? 'btn-primary' : 'btn-ghost'}`}
             onClick={() => setActiveTab('reports')}
             style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8 }}
           >
             <FileText size={14} style={{ marginRight: 6 }} />
-            Weekly Report
+            Strategic Reports
+          </button>
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => setPage('jarvis')}
+            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8, color: 'var(--accent-primary)' }}
+          >
+            <Bot size={14} style={{ marginRight: 6 }} />
+            Launch JARVIS →
           </button>
         </div>
       </motion.div>
@@ -296,14 +296,7 @@ export default function AIInsights() {
       {/* Provider Status Pill */}
       <AIStatus status={ai.status} />
 
-      {/* ── TAB 1: INTERACTIVE ASSISTANT (CHAT) ── */}
-      {activeTab === 'chat' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <AIChat ai={ai} />
-        </motion.div>
-      )}
-
-      {/* ── TAB 2: DAILY PLANNER ── */}
+      {/* ── TAB 1: DAILY PLANNER ── */}
       {activeTab === 'planner' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <AIDailyPlanner />

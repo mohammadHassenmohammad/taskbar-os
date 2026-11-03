@@ -292,3 +292,4 @@ flowchart TD
 4. **AI Failover**:
    - Primary: Google Gemini 3.5 Flash streaming via SSE.
    - Secondary / Rate Limit (429) / Network Outage: Deterministic fallback executes locally in `LocalDeterministicProvider` without breaking user flow.
+

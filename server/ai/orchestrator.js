@@ -12,6 +12,7 @@ export const INTENT_TYPES = {
   GENERAL_KNOWLEDGE: 'GENERAL_KNOWLEDGE',
   EMOTIONAL_SUPPORT: 'EMOTIONAL_SUPPORT',
   MOTIVATION: 'MOTIVATION',
+  ACTION_COMMAND: 'ACTION_COMMAND',
   PRODUCTIVITY_CURRENT: 'PRODUCTIVITY_CURRENT',
   PRODUCTIVITY_PREVIOUS: 'PRODUCTIVITY_PREVIOUS',
   PRODUCTIVITY_COMPARE: 'PRODUCTIVITY_COMPARE',
@@ -59,7 +60,14 @@ export function classifyIntent(userText = '', recentHistory = []) {
     return INTENT_TYPES.GENERAL_KNOWLEDGE;
   }
 
-  // 6. Universal Search
+  // 6. Action Execution Commands (create, complete, delete, start focus, log water)
+  if (text.match(/^(create|add|schedule|log|start|begin|complete|finish|mark|check off|delete|remove|reschedule|move)\s+(task|habit|routine|food|meal|workout|focus|water|sleep|steps|session)\b/i) ||
+      text.match(/^(drink|log)\s+\d+\s*(glasses|ml|liters|cups)?\s*(of\s+)?(water)?/i) ||
+      text.match(/^(start|begin)\s+(\d+)\s*(min|minute|mins)?\s*(focus|pomodoro|timer)/i)) {
+    return INTENT_TYPES.ACTION_COMMAND;
+  }
+
+  // 7. Universal Search
   if (text.match(/^(find|search for|look for|where is|did i log|search)\b/i)) {
     return INTENT_TYPES.SEARCH_QUERY;
   }
@@ -184,6 +192,15 @@ export function orchestrateConversation({ messages = [], context = {}, preferenc
       responseStyleGuidance = `The user searched for "${cleanSearchQuery}". Present the matching tasks, habits, workouts, or routines found in their records clearly.`;
       break;
 
+    case INTENT_TYPES.ACTION_COMMAND:
+      retrievedData = {
+        pendingTasks: tools.getPendingTasks({ date: tools.today }),
+        habits: tools.getHabits(),
+        routines: tools.getRoutines()
+      };
+      responseStyleGuidance = `The user is issuing an action command to create, complete, update, delete, or log an item. Confirm what you are doing in an articulate, efficient manner and output the corresponding action proposal syntax (e.g. 'Create task: "..."', 'Complete task: "..."', 'Delete task: "..."', 'Start focus session: ... mins', 'Log water: ... glasses', 'Mark habit complete: "..."') so the application can execute it with 1-click or confirmation.`;
+      break;
+
     case INTENT_TYPES.WELLNESS_QUERY:
       retrievedData = {
         hydration: tools.getHydrationStats({ date: tools.today }),
@@ -289,7 +306,14 @@ CRITICAL DIRECTIVES:
 5. For emotional conversations (tired, burnout, bad day), listen with deep empathy and patience before offering advice.
 6. When answering questions about the user's productivity, tasks, habits, workouts, or diet, use the provided RETRIEVED APPLICATION DATA below. Never invent fictional numbers.
 7. Understand conversational references ("that", "it", "last week", "compare them", "what about yesterday") from the recent chat history.
-8. ACTION PROPOSALS: When recommending a new task, you can include \`Create task: "<Task Title>"\` on its own line. For water, \`Log water: 1 glass\`. For focus, \`Start focus session: 25 minutes\`. The UI renders an interactive 1-click button for the user to approve.
+8. AUTONOMOUS ACTIONS & COMMANDS: You have full authority to propose and execute actions across TaskBar OS on the user's behalf. When the user gives an operational instruction or when recommending an action:
+- To create a task: include \`Create task: "<Task Title>"\` on its own line.
+- To complete a task: include \`Complete task: "<Task Title>"\` on its own line.
+- To delete a task: include \`Delete task: "<Task Title>"\` on its own line.
+- To start a focus block: include \`Start focus session: <minutes> mins\` on its own line.
+- To log hydration: include \`Log water: <amount> glasses\` on its own line.
+- To mark habit complete: include \`Mark habit complete: "<Habit Name>"\` on its own line.
+The application engine renders an interactive action card allowing the user to approve and execute it with one click. For deletions, the system automatically shows a consequential confirmation warning.
 
 ${responseStyleGuidance ? `STYLE & INTENT GUIDANCE:\n${responseStyleGuidance}\n` : ''}
 ${retrievedData ? `RETRIEVED APPLICATION DATA (Real Stored Records):\n${JSON.stringify(retrievedData, null, 2)}\n` : ''}

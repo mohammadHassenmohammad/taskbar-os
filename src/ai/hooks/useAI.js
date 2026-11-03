@@ -5,6 +5,8 @@ import { aiMemoryService } from '../services/aiMemoryService';
 import { useStore } from '../../store/useStore';
 import toast from 'react-hot-toast';
 
+import { ActionExecutionService } from '../services/actionExecutionService';
+
 export function useAI() {
   const store = useStore();
   const [status, setStatus] = useState(null);
@@ -226,50 +228,31 @@ export function useAI() {
     sendMessage(lastUserMsg);
   };
 
-  // Action Proposal Approval Workflow (Phase 8)
-  const approveAction = (action) => {
+  // Action Proposal Approval Workflow (Integrated with Central ActionExecutionService)
+  const approveAction = async (action) => {
     try {
-      if (!action || !action.type) return;
+      if (!action) return;
+      const type = action.type || action.action;
+      const payload = action.payload || action;
 
-      const todayStr = new Date().toISOString().split('T')[0];
-
-      if (action.type === 'create_task') {
-        const title = action.title || action.taskTitle || 'New Task';
-        const priority = action.priority || 'Medium';
-        const category = action.category || 'General';
-        
-        // Correct signature: addTask(taskData, date)
-        store.addTask({
-          title,
-          priority,
-          category,
-          completed: false
-        }, todayStr);
-        toast.success(`Task created: "${title}"`, { icon: '✅' });
-      } else if (action.type === 'start_focus') {
-        const duration = action.duration || 25;
-        store.startPomodoro('focus', duration);
-        toast.success(`Focus session (${duration}m) initiated`, { icon: '🎯' });
-      } else if (action.type === 'log_water') {
-        const glasses = (store.waterLogs?.[todayStr] || 0) + (action.amount || 1);
-        store.logWater(todayStr, glasses);
-        toast.success(`Hydration logged: ${glasses} glasses total`, { icon: '💧' });
-      } else if (action.type === 'log_habit') {
-        const habitQuery = (action.title || action.habitName || '').toLowerCase();
-        const habit = (store.habits || []).find(h => 
-          (h.name || h.title || '').toLowerCase().includes(habitQuery) ||
-          h.id === action.habitId
-        );
-        if (habit) {
-          store.logHabit(habit.id, todayStr, true);
-          toast.success(`Habit "${habit.name || habit.title}" logged for today!`, { icon: '🌟' });
-        } else {
-          toast.error('Could not find matching habit');
-        }
+      const result = await ActionExecutionService.executeAction(type, payload);
+      if (result && result.success && result.message) {
+        // Append confirmation to chat conversation
+        const confirmMsg = {
+          id: `msg_${Date.now()}_conf`,
+          role: 'assistant',
+          content: `✅ **Action Confirmed:** ${result.message}`,
+          timestamp: new Date().toISOString()
+        };
+        updateActiveConversation(conv => ({
+          ...conv,
+          messages: [...(conv.messages || []), confirmMsg]
+        }));
       }
+      return result;
     } catch (err) {
       console.error('Failed to execute AI proposal:', err);
-      toast.error('Could not apply suggested action');
+      toast.error(err.message || 'Could not apply suggested action');
     }
   };
 

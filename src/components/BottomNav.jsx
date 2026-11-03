@@ -1,16 +1,16 @@
 import { useStore } from '../store/useStore';
 import { motion } from 'framer-motion';
-import { Home, CheckSquare, Calendar, PieChart, Dumbbell } from 'lucide-react';
+import { Home, CheckSquare, Calendar, Dumbbell, Bot } from 'lucide-react';
 
 export default function BottomNav() {
   const { currentPage, setPage } = useStore();
 
   const NAV_ITEMS = [
     { id: 'dashboard', label: 'Home', icon: Home },
-    { id: 'today', label: 'Mission', icon: CheckSquare },
+    { id: 'jarvis', label: 'JARVIS', icon: Bot },
+    { id: 'today', label: 'Tasks', icon: CheckSquare },
     { id: 'gym', label: 'Fitness', icon: Dumbbell },
-    { id: 'calendar', label: 'Nexus', icon: Calendar },
-    { id: 'analytics', label: 'Stats', icon: PieChart },
+    { id: 'calendar', label: 'Calendar', icon: Calendar },
   ];
 
   return (

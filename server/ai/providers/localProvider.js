@@ -74,6 +74,37 @@ Forgive today. Log off, get a solid night of rest, and tomorrow morning we start
     else if (lower.match(/(thank you|thanks|thx|appreciate it|awesome|great job)/i)) {
       responseText = `You're very welcome! I'm always in your corner to keep your momentum strong. Let me know whenever you need anything else.`;
     }
+    // 5B. Action Commands: Create Task
+    else if (lower.match(/(?:create|add)\s+(?:a\s+)?task\s+(?:to\s+)?(.+)/i)) {
+      const match = lower.match(/(?:create|add)\s+(?:a\s+)?task\s+(?:to\s+)?(.+)/i);
+      const rawTitle = match ? match[1].replace(/^(for\s+today|for\s+tomorrow|please)\s*/i, '').trim() : 'New Task';
+      const cleanTitle = rawTitle.charAt(0).toUpperCase() + rawTitle.slice(1);
+      responseText = `I have drafted this task for you. Tap the button below to add it directly to your schedule:\n\nCreate task: "${cleanTitle}"`;
+    }
+    // 5C. Action Commands: Complete Task
+    else if (lower.match(/(?:complete|finish|mark\s+completed?)\s+(?:task\s+)?(.+)/i)) {
+      const match = lower.match(/(?:complete|finish|mark\s+completed?)\s+(?:task\s+)?(.+)/i);
+      const rawTitle = match ? match[1].replace(/^(as\s+completed|done|please)\s*/i, '').trim() : '';
+      responseText = `I've located this mission. Tap below to confirm completion:\n\nComplete task: "${rawTitle}"`;
+    }
+    // 5D. Action Commands: Delete Task
+    else if (lower.match(/(?:delete|remove)\s+(?:the\s+)?(?:duplicate\s+)?task\s*(.*)/i)) {
+      const match = lower.match(/(?:delete|remove)\s+(?:the\s+)?(?:duplicate\s+)?task\s*(.*)/i);
+      const target = match && match[1].trim() ? match[1].trim() : 'target task';
+      responseText = `⚠️ **Consequential Deletion Request**: Tap below to authorize permanent deletion:\n\nDelete task: "${target}"`;
+    }
+    // 5E. Action Commands: Focus
+    else if (lower.match(/(?:start|begin)\s+(?:a\s+)?(\d+)?\s*(?:m|min|minute)?\s*focus/i)) {
+      const match = lower.match(/(?:start|begin)\s+(?:a\s+)?(\d+)?\s*(?:m|min|minute)?\s*focus/i);
+      const mins = match && match[1] ? parseInt(match[1], 10) : 25;
+      responseText = `Ready to lock in for a deep work block. Tap below to launch your tactical timer:\n\nStart focus session: ${mins} mins`;
+    }
+    // 5F. Action Commands: Water
+    else if (lower.match(/(?:log|drink|add)\s+(\d+)?\s*(?:glass|glasses)?\s*(?:of\s+)?water/i)) {
+      const match = lower.match(/(?:log|drink|add)\s+(\d+)?\s*(?:glass|glasses)?\s*(?:of\s+)?water/i);
+      const glasses = match && match[1] ? parseInt(match[1], 10) : 1;
+      responseText = `Hydration tracking ready. Tap below to update your daily water log:\n\nLog water: ${glasses} glasses`;
+    }
     // 6. Productivity & Task Analysis
     else if (lower.includes('productivity') || lower.includes('task') || lower.includes('how was') || lower.includes('progress')) {
       const prod = context.productivity || {};
