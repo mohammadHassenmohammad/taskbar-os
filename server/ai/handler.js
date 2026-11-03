@@ -1,10 +1,11 @@
 import { getProvider, getProviderStatus, testGeminiConnection } from './providerRegistry.js';
+import { LocalDeterministicProvider } from './providers/localProvider.js';
 import { checkRateLimit, validatePayloadSize, sanitizeInput, getRateLimitStats } from './security.js';
 
 /**
  * Core Request Dispatcher for TaskBar OS AI Server
  * Handles standard Node http request/response and Vite Connect middleware
- * Supports Server-Sent Events (SSE) streaming, diagnostics, and structured analytical endpoints.
+ * Features automatic resilient fallback to local deterministic analytics if cloud API is unavailable.
  */
 export async function handleAIRequest(req, res, urlPath, body = {}) {
   // Common CORS and Base Headers
@@ -67,6 +68,7 @@ export async function handleAIRequest(req, res, urlPath, body = {}) {
   // 4. Resolve Active Provider
   const requestedProvider = body.provider || null;
   const provider = getProvider(requestedProvider);
+  const localFallback = new LocalDeterministicProvider();
 
   try {
     // A. Real-time Streaming Chat Endpoint (Server-Sent Events)
@@ -97,8 +99,21 @@ export async function handleAIRequest(req, res, urlPath, body = {}) {
         res.write('data: [DONE]\n\n');
         res.end();
       } catch (streamErr) {
-        res.write(`data: ${JSON.stringify({ error: streamErr.message })}\n\n`);
-        res.end();
+        console.warn(`[AI Handler] Stream failed on ${provider.name}. Streaming fallback via LocalDeterministicProvider...`, streamErr.message);
+        try {
+          await localFallback.generateStreamResponse(
+            messages,
+            { mode, context, preferences },
+            (chunk) => {
+              res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+            }
+          );
+          res.write('data: [DONE]\n\n');
+          res.end();
+        } catch (fbErr) {
+          res.write(`data: ${JSON.stringify({ error: fbErr.message })}\n\n`);
+          res.end();
+        }
       }
       return;
     }
@@ -115,9 +130,17 @@ export async function handleAIRequest(req, res, urlPath, body = {}) {
       const mode = body.mode || 'normal';
       const context = body.context || {};
       const preferences = body.preferences || {};
-      const result = await provider.generateResponse(messages, { mode, context, preferences });
-      res.statusCode = 200;
-      res.end(JSON.stringify(result));
+
+      try {
+        const result = await provider.generateResponse(messages, { mode, context, preferences });
+        res.statusCode = 200;
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        console.warn(`[AI Handler] Chat failed on ${provider.name}. Falling back to LocalDeterministicProvider:`, err.message);
+        const fbResult = await localFallback.generateResponse(messages, { mode, context, preferences });
+        res.statusCode = 200;
+        res.end(JSON.stringify({ ...fbResult, fallbackNotice: err.message }));
+      }
       return;
     }
 
@@ -126,29 +149,51 @@ export async function handleAIRequest(req, res, urlPath, body = {}) {
       const type = body.type || 'productivity';
       const data = body.data || {};
       let analysisResult = null;
+      let usedProvider = provider.name;
 
-      switch (type) {
-        case 'productivity':
-          analysisResult = await provider.analyzeProductivity(data);
-          break;
-        case 'habits':
-          analysisResult = await provider.analyzeHabits(data);
-          break;
-        case 'workouts':
-          analysisResult = await provider.analyzeWorkouts(data);
-          break;
-        case 'nutrition':
-          analysisResult = await provider.analyzeNutrition(data);
-          break;
-        default:
-          analysisResult = await provider.analyzeProductivity(data);
+      try {
+        switch (type) {
+          case 'productivity':
+            analysisResult = await provider.analyzeProductivity(data);
+            break;
+          case 'habits':
+            analysisResult = await provider.analyzeHabits(data);
+            break;
+          case 'workouts':
+            analysisResult = await provider.analyzeWorkouts(data);
+            break;
+          case 'nutrition':
+            analysisResult = await provider.analyzeNutrition(data);
+            break;
+          default:
+            analysisResult = await provider.analyzeProductivity(data);
+        }
+      } catch (err) {
+        console.warn(`[AI Handler] Analysis (${type}) failed on ${provider.name}. Falling back to LocalDeterministicProvider:`, err.message);
+        usedProvider = 'local_deterministic';
+        switch (type) {
+          case 'productivity':
+            analysisResult = await localFallback.analyzeProductivity(data);
+            break;
+          case 'habits':
+            analysisResult = await localFallback.analyzeHabits(data);
+            break;
+          case 'workouts':
+            analysisResult = await localFallback.analyzeWorkouts(data);
+            break;
+          case 'nutrition':
+            analysisResult = await localFallback.analyzeNutrition(data);
+            break;
+          default:
+            analysisResult = await localFallback.analyzeProductivity(data);
+        }
       }
 
       res.statusCode = 200;
       res.end(JSON.stringify({
         type,
         analysis: analysisResult,
-        provider: provider.name,
+        provider: usedProvider,
         timestamp: new Date().toISOString()
       }));
       return;
@@ -171,14 +216,37 @@ Return JSON with:
 - "workloadAssessment": "Light" | "Optimal" | "Heavy" | "Overloaded"
 - "plannerAdvice": 2-3 sentences of tactical coaching`;
 
-      const planResult = await provider.generateStructuredResponse(prompt, null, {
-        systemPrompt: 'Generate a realistic daily schedule that avoids burnout and respects human energy constraints.'
-      });
+      let planResult;
+      let usedProvider = provider.name;
+
+      try {
+        planResult = await provider.generateStructuredResponse(prompt, null, {
+          systemPrompt: 'Generate a realistic daily schedule that avoids burnout and respects human energy constraints.'
+        });
+      } catch (err) {
+        console.warn(`[AI Handler] Daily plan failed on ${provider.name}. Falling back to LocalDeterministicProvider:`, err.message);
+        usedProvider = 'local_deterministic';
+        planResult = {
+          date: new Date().toISOString().split('T')[0],
+          dailyTheme: 'Tactical Focus & Steady Momentum',
+          recommendedOrder: (context.todayTasks || []).map((t, idx) => ({
+            taskId: t.id || `task_${idx}`,
+            title: t.title,
+            recommendedTime: idx === 0 ? '09:00 AM' : idx === 1 ? '11:00 AM' : '02:00 PM',
+            priority: t.priority || 'Medium',
+            reason: 'High strategic impact sequence'
+          })),
+          focusBlocks: [{ time: '10:00 AM', duration: 25, label: 'Deep Work Block' }],
+          recoveryBreaks: [{ time: '11:30 AM', duration: 10, activity: 'Hydration & Mobility' }],
+          workloadAssessment: 'Optimal',
+          plannerAdvice: 'Focus on completing your top priority task before noon.'
+        };
+      }
 
       res.statusCode = 200;
       res.end(JSON.stringify({
         plan: planResult,
-        provider: provider.name,
+        provider: usedProvider,
         timestamp: new Date().toISOString()
       }));
       return;
@@ -187,11 +255,21 @@ Return JSON with:
     // E. Weekly / Monthly Report Endpoint
     if (urlPath.endsWith('/report')) {
       const reportData = body.data || {};
-      const report = await provider.generateWeeklyReport(reportData);
+      let report;
+      let usedProvider = provider.name;
+
+      try {
+        report = await provider.generateWeeklyReport(reportData);
+      } catch (err) {
+        console.warn(`[AI Handler] Weekly report failed on ${provider.name}. Falling back to LocalDeterministicProvider:`, err.message);
+        usedProvider = 'local_deterministic';
+        report = await localFallback.generateWeeklyReport(reportData);
+      }
+
       res.statusCode = 200;
       res.end(JSON.stringify({
         report,
-        provider: provider.name,
+        provider: usedProvider,
         timestamp: new Date().toISOString()
       }));
       return;
@@ -200,11 +278,21 @@ Return JSON with:
     // F. Suggestions Endpoint
     if (urlPath.endsWith('/suggestions')) {
       const data = body.data || {};
-      const suggestions = await provider.generateSuggestions(data);
+      let suggestions;
+      let usedProvider = provider.name;
+
+      try {
+        suggestions = await provider.generateSuggestions(data);
+      } catch (err) {
+        console.warn(`[AI Handler] Suggestions failed on ${provider.name}. Falling back to LocalDeterministicProvider:`, err.message);
+        usedProvider = 'local_deterministic';
+        suggestions = await localFallback.generateSuggestions(data);
+      }
+
       res.statusCode = 200;
       res.end(JSON.stringify({
         suggestions,
-        provider: provider.name
+        provider: usedProvider
       }));
       return;
     }

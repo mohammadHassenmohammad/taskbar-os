@@ -9,16 +9,17 @@ export class GeminiProvider extends BaseAIProvider {
   constructor(config = {}) {
     super('gemini');
     this.apiKey = config.apiKey || process.env.GEMINI_API_KEY || '';
-    this.preferredModel = config.model || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+    this.preferredModel = config.model || process.env.GEMINI_MODEL || 'gemini-3.8-flash';
     this.model = this.preferredModel;
-    this.analysisModel = config.analysisModel || process.env.GEMINI_ANALYSIS_MODEL || 'gemini-2.0-flash';
-    this.fallbackModel = config.fallbackModel || process.env.GEMINI_FALLBACK_MODEL || 'gemini-1.5-flash';
+    this.analysisModel = config.analysisModel || process.env.GEMINI_ANALYSIS_MODEL || 'gemini-3.8-flash';
+    this.fallbackModel = config.fallbackModel || process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash';
     this.endpoint = 'https://generativelanguage.googleapis.com/v1beta';
     
-    // Model Discovery Cache
+    // Model Discovery Cache & Retirement Tracking
     this.discoveredModels = [];
     this.modelsLastDiscoveredAt = 0;
     this.modelDiscoveryTtlMs = 60 * 60 * 1000; // 1 hour
+    this.retiredModels = new Set(); // Tracks models reported as retired/unavailable by Google
     this.lastResolvedModel = this.preferredModel;
     this.lastSuccessfulRequestAt = null;
     this.lastConnectionError = null;
@@ -30,15 +31,15 @@ export class GeminiProvider extends BaseAIProvider {
 
   /**
    * Helper to normalize model resource names
-   * Ensures 'gemini-2.0-flash' -> 'models/gemini-2.0-flash'
+   * Ensures 'gemini-3.8-flash' -> 'models/gemini-3.8-flash'
    */
   _normalizeModelName(modelName) {
-    if (!modelName) return 'models/gemini-2.0-flash';
+    if (!modelName) return 'models/gemini-3.8-flash';
     return modelName.startsWith('models/') ? modelName : `models/${modelName}`;
   }
 
   _cleanModelName(modelName) {
-    if (!modelName) return 'gemini-2.0-flash';
+    if (!modelName) return 'gemini-3.8-flash';
     return modelName.replace(/^models\//, '');
   }
 
@@ -98,114 +99,143 @@ export class GeminiProvider extends BaseAIProvider {
 
   /**
    * Intelligently resolves the active model:
-   * 1. Checks if preferred model is present and supports generateContent.
-   * 2. If not, selects the best compatible model from the discovered models list.
-   * 3. Falls back safely without hardcoded single points of failure.
+   * 1. Checks if preferred model is present, non-retired, and supports generateContent.
+   * 2. If not, selects the best compatible non-retired model from the discovered models list.
+   * 3. Falls back safely through priority candidates.
    */
   async getResolvedModel(forceRefresh = false) {
     const models = await this.discoverModels(forceRefresh);
+    const available = models.filter(m => !this.retiredModels.has(m.cleanName) && !this.retiredModels.has(m.name));
     const cleanPreferred = this._cleanModelName(this.preferredModel);
 
-    // If models discovered, search for preferred model
-    if (models.length > 0) {
-      const preferredMatch = models.find(m => m.cleanName === cleanPreferred || m.name === this._normalizeModelName(this.preferredModel));
+    // If preferred model is not retired and available, use it
+    if (!this.retiredModels.has(cleanPreferred) && available.length > 0) {
+      const preferredMatch = available.find(m => m.cleanName === cleanPreferred || m.name === this._normalizeModelName(this.preferredModel));
       if (preferredMatch) {
         this.lastResolvedModel = preferredMatch.cleanName;
         return preferredMatch.name;
       }
+    }
 
-      // Fallback priority list for free-tier eligible models
-      const priorityOrder = [
-        'gemini-2.0-flash',
-        'gemini-1.5-flash',
-        'gemini-2.5-flash',
-        'gemini-1.5-flash-8b',
-        'gemini-2.0-flash-exp',
-        'gemini-1.5-pro'
-      ];
+    // Priority candidate models for free-tier eligible generation
+    const priorityOrder = [
+      'gemini-3.8-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-2.5-flash',
+      'gemini-1.5-flash-8b',
+      'gemini-2.0-flash-exp',
+      'gemini-1.5-pro'
+    ];
 
+    if (available.length > 0) {
       for (const candidate of priorityOrder) {
-        const found = models.find(m => m.cleanName === candidate);
+        if (this.retiredModels.has(candidate)) continue;
+        const found = available.find(m => m.cleanName === candidate);
         if (found) {
           this.lastResolvedModel = found.cleanName;
           return found.name;
         }
       }
 
-      // Pick the first discovered model that supports generateContent
-      const firstSupported = models[0];
+      // Pick the first available non-retired model
+      const firstSupported = available[0];
       if (firstSupported) {
         this.lastResolvedModel = firstSupported.cleanName;
         return firstSupported.name;
       }
     }
 
-    // Default normalized model if discovery unavailable
-    const defaultModel = this._normalizeModelName(this.preferredModel);
-    this.lastResolvedModel = this._cleanModelName(defaultModel);
-    return defaultModel;
+    // Fallback safely across candidate list if discovery returned empty
+    for (const fb of priorityOrder) {
+      if (!this.retiredModels.has(fb)) {
+        this.lastResolvedModel = fb;
+        return `models/${fb}`;
+      }
+    }
+
+    return this._normalizeModelName(this.preferredModel);
   }
 
   /**
-   * Helper to make API requests with automatic 404 recovery and timeout
+   * Helper to make API requests with automatic 404 recovery and intelligent model retirement
    */
-  async _callApi(payload, timeoutMs = 15000, attemptFallback = true) {
+  async _callApi(payload, timeoutMs = 15000) {
     if (!this.isConfigured()) {
       throw new Error('GEMINI_API_KEY is not configured on the server. Please add GEMINI_API_KEY to your server .env file.');
     }
 
-    const resolvedModelName = await this.getResolvedModel();
-    const url = `${this.endpoint}/${resolvedModelName}:generateContent?key=${this.apiKey}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let attempts = 0;
+    const maxAttempts = 3;
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
+    while (attempts < maxAttempts) {
+      attempts++;
+      const resolvedModelName = await this.getResolvedModel();
+      const url = `${this.endpoint}/${resolvedModelName}:generateContent?key=${this.apiKey}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-      clearTimeout(timeout);
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const status = response.status;
-        const msg = errorData.error?.message || response.statusText;
+        clearTimeout(timeout);
 
-        // Auto-heal 404: If model not found or not supported, refresh discovery and retry once with fallback
-        if (status === 404 && attemptFallback) {
-          console.warn(`[GeminiProvider] Model ${resolvedModelName} returned 404. Refreshing model catalog and retrying...`);
-          await this.discoverModels(true);
-          return await this._callApi(payload, timeoutMs, false);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const status = response.status;
+          const msg = errorData.error?.message || response.statusText;
+
+          // Self-heal retired model (404)
+          if (status === 404) {
+            console.warn(`[GeminiProvider] Model ${resolvedModelName} unavailable: ${msg}. Retiring and selecting fallback...`);
+            this.retiredModels.add(this._cleanModelName(resolvedModelName));
+            this.retiredModels.add(this._normalizeModelName(resolvedModelName));
+
+            // Extract Google's suggested replacement model if provided (e.g. "use models/gemini-3.8-flash")
+            const suggestedMatch = msg.match(/use\s+(?:models\/)?([a-zA-Z0-9.\-_]+)/i);
+            if (suggestedMatch && suggestedMatch[1]) {
+              const suggestedModel = this._cleanModelName(suggestedMatch[1]);
+              console.log(`[GeminiProvider] Google suggested model: ${suggestedModel}. Switching immediately...`);
+              this.preferredModel = suggestedModel;
+              this.lastResolvedModel = suggestedModel;
+            }
+
+            if (attempts < maxAttempts) {
+              await this.discoverModels(true);
+              continue; // Retry with the next model
+            }
+          }
+
+          this.lastConnectionError = `Gemini API Error (${status}): ${msg}`;
+
+          if (status === 429) {
+            throw new Error('Gemini API Rate Limit / Quota Exceeded (Free Tier). Please wait 30 seconds before retrying.');
+          } else if (status === 400) {
+            throw new Error(`Gemini API Invalid Request: ${msg}`);
+          } else if (status === 403 || status === 401) {
+            throw new Error('Gemini API Authentication Failed: Invalid API Key or API not enabled in Google Cloud Console.');
+          } else if (status === 404) {
+            throw new Error(`Gemini API Model Unavailable (404): ${msg}.`);
+          } else {
+            throw new Error(`Gemini API Error (${status}): ${msg}`);
+          }
         }
 
-        this.lastConnectionError = `Gemini API Error (${status}): ${msg}`;
-
-        if (status === 429) {
-          throw new Error('Gemini API Rate Limit / Quota Exceeded (Free Tier). Please wait 30 seconds before retrying.');
-        } else if (status === 400) {
-          throw new Error(`Gemini API Invalid Request: ${msg}`);
-        } else if (status === 403 || status === 401) {
-          throw new Error('Gemini API Authentication Failed: Invalid API Key or API not enabled in Google Cloud Console.');
-        } else if (status === 404) {
-          throw new Error(`Gemini API Model Unavailable (404): ${msg}. Please test connection in Settings.`);
-        } else {
-          throw new Error(`Gemini API Error (${status}): ${msg}`);
+        const result = await response.json();
+        this.lastSuccessfulRequestAt = new Date().toISOString();
+        this.lastConnectionError = null;
+        return result;
+      } catch (err) {
+        clearTimeout(timeout);
+        if (attempts >= maxAttempts || err.name === 'AbortError') {
+          throw err;
         }
       }
-
-      const result = await response.json();
-      this.lastSuccessfulRequestAt = new Date().toISOString();
-      this.lastConnectionError = null;
-      return result;
-    } catch (err) {
-      clearTimeout(timeout);
-      if (err.name === 'AbortError') {
-        throw new Error('Gemini API Request Timed Out (15s limit reached).');
-      }
-      throw err;
     }
   }
 
@@ -261,54 +291,66 @@ export class GeminiProvider extends BaseAIProvider {
     const preferences = options.preferences || {};
     const systemPrompt = options.systemPrompt || buildCompanionSystemPrompt(mode, context, preferences);
 
-    const resolvedModelName = await this.getResolvedModel();
-    const url = `${this.endpoint}/${resolvedModelName}:streamGenerateContent?key=${this.apiKey}&alt=sse`;
+    let attempts = 0;
+    const maxAttempts = 3;
 
-    const contents = (messages || []).map(m => ({
-      role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    }));
+    while (attempts < maxAttempts) {
+      attempts++;
+      const resolvedModelName = await this.getResolvedModel();
+      const url = `${this.endpoint}/${resolvedModelName}:streamGenerateContent?key=${this.apiKey}&alt=sse`;
 
-    const payload = {
-      contents,
-      systemInstruction: {
-        parts: [{ text: systemPrompt }]
-      },
-      generationConfig: {
-        temperature: options.temperature ?? 0.6,
-        maxOutputTokens: options.maxTokens ?? 2048,
-      }
-    };
+      const contents = (messages || []).map(m => ({
+        role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+      const payload = {
+        contents,
+        systemInstruction: {
+          parts: [{ text: systemPrompt }]
+        },
+        generationConfig: {
+          temperature: options.temperature ?? 0.6,
+          maxOutputTokens: options.maxTokens ?? 2048,
+        }
+      };
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const msg = errorData.error?.message || response.statusText;
-      
-      // Auto-heal 404 in streaming: refresh models and retry once
-      if (response.status === 404) {
-        await this.discoverModels(true);
-        const retryModel = await this.getResolvedModel();
-        const retryUrl = `${this.endpoint}/${retryModel}:streamGenerateContent?key=${this.apiKey}&alt=sse`;
-        const retryRes = await fetch(retryUrl, {
+      try {
+        const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (!retryRes.ok) {
-          throw new Error(`Gemini Stream Error (${retryRes.status}): ${msg}`);
-        }
-        return await this._processStreamReader(retryRes, onChunk);
-      }
-      throw new Error(`Gemini Stream Error (${response.status}): ${msg}`);
-    }
 
-    return await this._processStreamReader(response, onChunk);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const msg = errorData.error?.message || response.statusText;
+          
+          if (response.status === 404) {
+            console.warn(`[GeminiProvider Stream] Model ${resolvedModelName} returned 404: ${msg}. Retiring...`);
+            this.retiredModels.add(this._cleanModelName(resolvedModelName));
+            this.retiredModels.add(this._normalizeModelName(resolvedModelName));
+
+            const suggestedMatch = msg.match(/use\s+(?:models\/)?([a-zA-Z0-9.\-_]+)/i);
+            if (suggestedMatch && suggestedMatch[1]) {
+              const suggestedModel = this._cleanModelName(suggestedMatch[1]);
+              this.preferredModel = suggestedModel;
+              this.lastResolvedModel = suggestedModel;
+            }
+
+            if (attempts < maxAttempts) {
+              await this.discoverModels(true);
+              continue;
+            }
+          }
+          throw new Error(`Gemini Stream Error (${response.status}): ${msg}`);
+        }
+
+        return await this._processStreamReader(response, onChunk);
+      } catch (err) {
+        if (attempts >= maxAttempts) throw err;
+      }
+    }
   }
 
   /**
@@ -326,7 +368,7 @@ export class GeminiProvider extends BaseAIProvider {
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep incomplete trailing line
+      buffer = lines.pop() || '';
 
       for (const line of lines) {
         const trimmed = line.trim();
@@ -412,13 +454,12 @@ export class GeminiProvider extends BaseAIProvider {
       const models = await this.discoverModels(true);
       const activeModel = await this.getResolvedModel();
 
-      // Send a minimal ping verification
       const pingPayload = {
         contents: [{ role: 'user', parts: [{ text: 'Respond with the single word: OK' }] }],
         generationConfig: { maxOutputTokens: 5, temperature: 0.1 }
       };
 
-      const res = await this._callApi(pingPayload, 8000, true);
+      const res = await this._callApi(pingPayload, 8000);
       const latencyMs = Date.now() - startTime;
       const responseText = res.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
 
