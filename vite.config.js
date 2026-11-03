@@ -42,12 +42,16 @@ function aiDevServerPlugin() {
   };
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
+  if (command === 'serve') {
+    process.env.NODE_ENV = 'development';
+  }
   // Load server-side environment variables into process.env
   const env = loadEnv(mode, process.cwd(), '');
   Object.assign(process.env, env);
 
   return {
+    base: command === 'serve' ? '/' : './',
     plugins: [react(), aiDevServerPlugin()],
     worker: {
       format: 'es'
@@ -61,6 +65,5 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
     },
-    base: './',
   };
 });
