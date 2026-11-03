@@ -237,6 +237,7 @@ const defaultState = {
   // Routines
   routines: [],
   appliedRoutines: {},
+  dismissedRoutines: {},
 
   // Habits
   habits: [
@@ -494,19 +495,44 @@ export const useStore = create(
         s.tasks[d].push(createTask({ ...taskData, date: d, order: s.tasks[d].length }));
       }),
       updateTask: (taskId, date, updates) => set((s) => {
-        const tasks = s.tasks[date]; if (!tasks) return;
+        let targetDate = date;
+        if (!targetDate || !s.tasks[targetDate]?.some(t => t.id === taskId)) {
+          targetDate = Object.keys(s.tasks).find(d => s.tasks[d]?.some(t => t.id === taskId));
+        }
+        if (!targetDate || !s.tasks[targetDate]) return;
+        const tasks = s.tasks[targetDate];
         const idx = tasks.findIndex((t) => t.id === taskId); if (idx === -1) return;
         Object.assign(tasks[idx], updates);
       }),
       deleteTask: (taskId, date) => set((s) => {
-        if (!s.tasks[date]) return;
+        let targetDate = date;
+        if (!targetDate || !s.tasks[targetDate]?.some(t => t.id === taskId)) {
+          targetDate = Object.keys(s.tasks).find(d => s.tasks[d]?.some(t => t.id === taskId));
+        }
+        if (!targetDate || !s.tasks[targetDate]) return;
+
+        const taskToDelete = s.tasks[targetDate].find((t) => t.id === taskId);
         if (s.activeTimer?.id === taskId) s.activeTimer = null;
-        s.tasks[date] = s.tasks[date].filter((t) => t.id !== taskId);
+        s.tasks[targetDate] = s.tasks[targetDate].filter((t) => t.id !== taskId);
+
+        // If this task was generated from a routine, blacklist this routine instance for this date so it will not regenerate
+        if (taskToDelete?.isRoutine && taskToDelete?.routineId) {
+          if (!s.dismissedRoutines) s.dismissedRoutines = {};
+          if (!s.dismissedRoutines[targetDate]) s.dismissedRoutines[targetDate] = [];
+          if (!s.dismissedRoutines[targetDate].includes(taskToDelete.routineId)) {
+            s.dismissedRoutines[targetDate].push(taskToDelete.routineId);
+          }
+        }
       }),
       duplicateTask: (taskId, date) => set((s) => {
-        const tasks = s.tasks[date]; if (!tasks) return;
+        let targetDate = date;
+        if (!targetDate || !s.tasks[targetDate]?.some(t => t.id === taskId)) {
+          targetDate = Object.keys(s.tasks).find(d => s.tasks[d]?.some(t => t.id === taskId));
+        }
+        if (!targetDate || !s.tasks[targetDate]) return;
+        const tasks = s.tasks[targetDate];
         const task = tasks.find((t) => t.id === taskId); if (!task) return;
-        s.tasks[date].push(createTask({ ...task, id: uuidv4(), completed: false, completedAt: null, createdAt: new Date().toISOString(), order: tasks.length }));
+        s.tasks[targetDate].push(createTask({ ...task, id: uuidv4(), completed: false, completedAt: null, createdAt: new Date().toISOString(), order: tasks.length }));
       }),
       reorderTasks: (date, orderedIds) => set((s) => {
         if (!s.tasks[date]) return;
@@ -514,7 +540,12 @@ export const useStore = create(
         s.tasks[date] = orderedIds.map((id, idx) => ({ ...taskMap[id], order: idx }));
       }),
       toggleTaskComplete: (taskId, date) => set((s) => {
-        const tasks = s.tasks[date]; if (!tasks) return;
+        let targetDate = date;
+        if (!targetDate || !s.tasks[targetDate]?.some(t => t.id === taskId)) {
+          targetDate = Object.keys(s.tasks).find(d => s.tasks[d]?.some(t => t.id === taskId));
+        }
+        if (!targetDate || !s.tasks[targetDate]) return;
+        const tasks = s.tasks[targetDate];
         const task = tasks.find((t) => t.id === taskId); if (!task) return;
         
         // If it's the active timer, stop it first
@@ -529,7 +560,7 @@ export const useStore = create(
         if (task.completed) task.progress = 100;
 
         // Idempotent XP logic with Streak Multiplier via Authoritative Engine
-        const sourceId = `task:${task.id}:${date}`;
+        const sourceId = `task:${task.id}:${targetDate}`;
         if (!s.gamification.xpTransactions) s.gamification.xpTransactions = [];
 
         if (task.completed) {
@@ -753,9 +784,10 @@ export const useStore = create(
         
         if (!s.tasks[date]) s.tasks[date] = [];
         const existingIds = new Set(s.tasks[date].filter(t => t.isRoutine).map(t => t.routineId));
+        const dismissed = new Set(s.dismissedRoutines?.[date] || []);
         
         enabled.forEach(r => {
-          if (!existingIds.has(r.id)) {
+          if (!existingIds.has(r.id) && !dismissed.has(r.id)) {
             s.tasks[date].push(createTask({ 
               title: r.title, 
               description: r.description, 
@@ -931,12 +963,27 @@ export const useStore = create(
         }
       }),
       postponeTask: (taskId, fromDate, toDate) => set((s) => {
-        const tasks = s.tasks[fromDate] || [];
+        let sourceDate = fromDate;
+        if (!sourceDate || !s.tasks[sourceDate]?.some(t => t.id === taskId)) {
+          sourceDate = Object.keys(s.tasks).find(d => s.tasks[d]?.some(t => t.id === taskId));
+        }
+        if (!sourceDate || !s.tasks[sourceDate]) return;
+
+        const tasks = s.tasks[sourceDate];
         const taskIdx = tasks.findIndex(t => t.id === taskId);
         if (taskIdx === -1) return;
         const [task] = tasks.splice(taskIdx, 1);
         if (!s.tasks[toDate]) s.tasks[toDate] = [];
         s.tasks[toDate].push({ ...task, date: toDate, completed: false, timeTaken: 0 });
+
+        // If a routine task is moved away from sourceDate, don't resurrect it on sourceDate
+        if (task?.isRoutine && task?.routineId) {
+          if (!s.dismissedRoutines) s.dismissedRoutines = {};
+          if (!s.dismissedRoutines[sourceDate]) s.dismissedRoutines[sourceDate] = [];
+          if (!s.dismissedRoutines[sourceDate].includes(task.routineId)) {
+            s.dismissedRoutines[sourceDate].push(task.routineId);
+          }
+        }
       }),
       updateMissionLog: (date, text) => set((s) => {
         if (!s.journal[date]) s.journal[date] = { text: '', mood: 5, water: 0, sleep: 7 };
@@ -1898,6 +1945,7 @@ export const useStore = create(
           settings: state.settings,
           routines: state.routines,
           appliedRoutines: state.appliedRoutines,
+          dismissedRoutines: state.dismissedRoutines,
           waterLogs: state.waterLogs,
           waterGoal: state.waterGoal,
           waterSchedule: state.waterSchedule,
@@ -2038,6 +2086,8 @@ export const useStore = create(
         // We persist these as a secondary safety layer, but cloud is primary
         tasks: state.tasks,
         routines: state.routines,
+        appliedRoutines: state.appliedRoutines,
+        dismissedRoutines: state.dismissedRoutines,
         habits: state.habits,
         habitLogs: state.habitLogs,
         workouts: state.workouts,

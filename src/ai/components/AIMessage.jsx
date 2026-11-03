@@ -48,6 +48,30 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
       };
     }
 
+    // 1B. Delete routine protocol (Consequential)
+    const delRoutineMatch = text.match(/(?:delete|remove)\s+routine[:\s]+"([^"]+)"/i) ||
+                            text.match(/Delete routine[:\s]+([^\n.,]+)/i);
+    if (delRoutineMatch) {
+      return {
+        type: 'delete_routine',
+        title: delRoutineMatch[1].trim(),
+        risk: 'consequential',
+        warning: 'This will permanently remove this routine protocol and future occurrences.'
+      };
+    }
+
+    // 1C. Delete habit (Consequential)
+    const delHabitMatch = text.match(/(?:delete|remove)\s+habit[:\s]+"([^"]+)"/i) ||
+                          text.match(/Delete habit[:\s]+([^\n.,]+)/i);
+    if (delHabitMatch) {
+      return {
+        type: 'delete_habit',
+        title: delHabitMatch[1].trim(),
+        risk: 'consequential',
+        warning: 'This will permanently delete this habit and reset tracked streak history.'
+      };
+    }
+
     // 2. Complete task
     const compTaskMatch = text.match(/(?:mark|complete|finish)\s+task[:\s]+"([^"]+)"/i) ||
                           text.match(/Complete task[:\s]+([^\n.,]+)/i);
@@ -69,6 +93,28 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
         title: taskMatch[1].trim(),
         priority: 'Medium',
         category: 'Work',
+        risk: 'low'
+      };
+    }
+
+    // 3B. Create routine proposal
+    const routineMatch = text.match(/Create routine[:\s]+"([^"]+)"/i) ||
+                         text.match(/(?:suggest|recommend)\s+routine[:\s]+"([^"]+)"/i);
+    if (routineMatch) {
+      return {
+        type: 'create_routine',
+        title: routineMatch[1].trim(),
+        risk: 'low'
+      };
+    }
+
+    // 3C. Create habit proposal
+    const createHabitMatch = text.match(/Create habit[:\s]+"([^"]+)"/i) ||
+                             text.match(/(?:suggest|recommend)\s+habit[:\s]+"([^"]+)"/i);
+    if (createHabitMatch) {
+      return {
+        type: 'create_habit',
+        title: createHabitMatch[1].trim(),
         risk: 'low'
       };
     }
@@ -257,10 +303,14 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
                   {actionProposal.type === 'create_task' && `Create Task: "${actionProposal.title}"`}
                   {actionProposal.type === 'complete_task' && `Complete Task: "${actionProposal.title}"`}
                   {actionProposal.type === 'delete_task' && `Delete Task: "${actionProposal.title}"`}
+                  {actionProposal.type === 'create_routine' && `Create Routine: "${actionProposal.title}"`}
+                  {actionProposal.type === 'delete_routine' && `Delete Routine: "${actionProposal.title}"`}
+                  {actionProposal.type === 'create_habit' && `Create Habit: "${actionProposal.title || actionProposal.name}"`}
+                  {actionProposal.type === 'delete_habit' && `Delete Habit: "${actionProposal.title || actionProposal.name}"`}
                   {actionProposal.type === 'start_focus' && `Start Focus Session: ${actionProposal.duration} mins`}
                   {actionProposal.type === 'log_water' && `Log Hydration: ${actionProposal.amount} glass${actionProposal.amount > 1 ? 'es' : ''}`}
-                  {actionProposal.type === 'log_habit' && `Log Habit: "${actionProposal.title}"`}
-                  {!['create_task', 'complete_task', 'delete_task', 'start_focus', 'log_water', 'log_habit'].includes(actionProposal.type) &&
+                  {actionProposal.type === 'log_habit' && `Log Habit: "${actionProposal.title || actionProposal.name}"`}
+                  {!['create_task', 'complete_task', 'delete_task', 'create_routine', 'delete_routine', 'create_habit', 'delete_habit', 'start_focus', 'log_water', 'log_habit'].includes(actionProposal.type) &&
                     `${actionProposal.type.replace('_', ' ')}: "${actionProposal.title}"`}
                 </div>
                 {actionProposal.warning && (

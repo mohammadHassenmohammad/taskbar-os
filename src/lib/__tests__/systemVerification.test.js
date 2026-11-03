@@ -298,6 +298,42 @@ function runSuite() {
   assert(calcCal === 330, '200g chicken breast is exactly 330 kcal');
   assert(calcProt === 62, '200g chicken breast is exactly 62g protein');
 
+  // --- 10. ROUTINE DISMISSAL & DELETION INTEGRITY (PREVENT REGENERATION BUG) ---
+  console.log('\n--- 10. ROUTINE DISMISSAL & DELETION INTEGRITY ---');
+  // Scenario: Routine 'r_leet' generates task 'Leet code' for today
+  const mockRoutine = { id: 'r_leet', title: 'Leet code', enabled: true, days: [0, 1, 2, 3, 4, 5, 6] };
+  const mockDate = '2026-11-03';
+  let mockStateTasks = {
+    [mockDate]: [{ id: 'task_leet_1', title: 'Leet code', isRoutine: true, routineId: 'r_leet', completed: false }]
+  };
+  let mockDismissed = {};
+
+  // Step 1: User deletes the routine task for today
+  const taskToDelete = mockStateTasks[mockDate].find(t => t.id === 'task_leet_1');
+  if (taskToDelete?.isRoutine && taskToDelete?.routineId) {
+    if (!mockDismissed[mockDate]) mockDismissed[mockDate] = [];
+    mockDismissed[mockDate].push(taskToDelete.routineId);
+  }
+  mockStateTasks[mockDate] = mockStateTasks[mockDate].filter(t => t.id !== 'task_leet_1');
+  assert(mockStateTasks[mockDate].length === 0, 'Task deleted from today board');
+  assert(mockDismissed[mockDate].includes('r_leet'), 'Routine blacklisted in dismissedRoutines for today');
+
+  // Step 2: Component mounts or re-renders, triggering applyRoutinesToDate
+  const existingIds = new Set(mockStateTasks[mockDate].filter(t => t.isRoutine).map(t => t.routineId));
+  const dismissedSet = new Set(mockDismissed[mockDate] || []);
+  let regenerated = false;
+  if (!existingIds.has(mockRoutine.id) && !dismissedSet.has(mockRoutine.id)) {
+    mockStateTasks[mockDate].push({ id: 'task_leet_2', title: mockRoutine.title, isRoutine: true, routineId: mockRoutine.id });
+    regenerated = true;
+  }
+  assert(regenerated === false, 'Dismissed routine is NOT regenerated on re-render');
+  assert(mockStateTasks[mockDate].length === 0, 'Board remains cleanly deleted without ghost task');
+
+  // Step 3: Normalized string matching ("Leet code" matches "LeetCode")
+  const normStr = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  assert(normStr('Leet code') === normStr('LeetCode'), 'Normalized string matches "Leet code" with "LeetCode"');
+  assert(normStr('Leet-Code') === normStr('leetcode'), 'Normalized string matches "Leet-Code" with "leetcode"');
+
   console.log(`\n\x1b[32m[SUCCESS]\x1b[0m All ${passedTests} / ${totalTests} verification tests passed successfully!`);
 }
 

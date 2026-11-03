@@ -310,6 +310,10 @@ CRITICAL DIRECTIVES:
 - To create a task: include \`Create task: "<Task Title>"\` on its own line.
 - To complete a task: include \`Complete task: "<Task Title>"\` on its own line.
 - To delete a task: include \`Delete task: "<Task Title>"\` on its own line.
+- To create a routine: include \`Create routine: "<Routine Title>"\` on its own line.
+- To delete a routine: include \`Delete routine: "<Routine Title>"\` on its own line.
+- To create a habit: include \`Create habit: "<Habit Name>"\` on its own line.
+- To delete a habit: include \`Delete habit: "<Habit Name>"\` on its own line.
 - To start a focus block: include \`Start focus session: <minutes> mins\` on its own line.
 - To log hydration: include \`Log water: <amount> glasses\` on its own line.
 - To mark habit complete: include \`Mark habit complete: "<Habit Name>"\` on its own line.

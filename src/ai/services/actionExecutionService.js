@@ -48,14 +48,21 @@ export function resolveNaturalDate(dateInput) {
 }
 
 /**
+ * Normalizes text by removing non-alphanumeric characters and lowercase
+ */
+const normStr = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
  * Fuzzy matches a task in the store by informal title or ID
  */
 export function findTaskInStore(query = '', preferredDate = null) {
   const store = useStore.getState();
   const allTasks = store.tasks || {};
   const q = String(query).trim().toLowerCase();
+  const qNorm = normStr(query);
 
-  const candidates = [];
+  const exactMatches = [];
+  const partialMatches = [];
 
   // Search across dates (checking preferredDate first)
   const dates = Object.keys(allTasks);
@@ -67,13 +74,24 @@ export function findTaskInStore(query = '', preferredDate = null) {
     const list = allTasks[dStr] || [];
     list.forEach(t => {
       const titleLower = (t.title || '').toLowerCase();
-      if (t.id === q || titleLower === q) {
-        candidates.unshift({ task: t, date: dStr, exact: true });
-      } else if (titleLower.includes(q) || (t.description && t.description.toLowerCase().includes(q))) {
-        candidates.push({ task: t, date: dStr, exact: false });
+      const tNorm = normStr(t.title);
+
+      const isExact = t.id === q || titleLower === q || (qNorm.length > 0 && tNorm === qNorm);
+      if (isExact) {
+        exactMatches.push({ task: t, date: dStr, exact: true });
+      } else {
+        const isPartial = titleLower.includes(q) || 
+          (qNorm.length >= 3 && tNorm.includes(qNorm)) || 
+          (qNorm.length >= 3 && qNorm.includes(tNorm)) ||
+          (t.description && t.description.toLowerCase().includes(q));
+        if (isPartial) {
+          partialMatches.push({ task: t, date: dStr, exact: false });
+        }
       }
     });
   });
+
+  const candidates = [...exactMatches, ...partialMatches];
 
   if (candidates.length === 0) return { found: false, task: null };
   if (candidates.length === 1 || candidates[0].exact) {
@@ -96,14 +114,17 @@ export function findHabitInStore(query = '') {
   const store = useStore.getState();
   const habits = store.habits || [];
   const q = String(query).trim().toLowerCase();
+  const qNorm = normStr(query);
 
   const match = habits.find(h => 
     h.id === q || 
     (h.name && h.name.toLowerCase() === q) || 
-    (h.title && h.title.toLowerCase() === q)
+    (h.title && h.title.toLowerCase() === q) ||
+    (h.name && normStr(h.name) === qNorm)
   ) || habits.find(h => 
     (h.name && h.name.toLowerCase().includes(q)) || 
-    (h.title && h.title.toLowerCase().includes(q))
+    (h.title && h.title.toLowerCase().includes(q)) ||
+    (qNorm.length >= 3 && normStr(h.name).includes(qNorm))
   );
 
   return match || null;
@@ -116,12 +137,15 @@ export function findRoutineInStore(query = '') {
   const store = useStore.getState();
   const routines = store.routines || [];
   const q = String(query).trim().toLowerCase();
+  const qNorm = normStr(query);
 
   const match = routines.find(r => 
     r.id === q || 
-    (r.title && r.title.toLowerCase() === q)
+    (r.title && r.title.toLowerCase() === q) ||
+    (r.title && normStr(r.title) === qNorm)
   ) || routines.find(r => 
-    (r.title && r.title.toLowerCase().includes(q))
+    (r.title && r.title.toLowerCase().includes(q)) ||
+    (qNorm.length >= 3 && normStr(r.title).includes(qNorm))
   );
 
   return match || null;
@@ -239,9 +263,43 @@ export class ActionExecutionService {
         case 'delete_task': {
           const query = payload.title || payload.id;
           const search = findTaskInStore(query, targetDate);
+          const routineMatch = findRoutineInStore(query);
+
+          // If no task found, but a routine with this name exists, delete the routine
+          if (!search.found && routineMatch) {
+            store.deleteRoutine(routineMatch.id);
+            toast.success(`Deleted routine: "${routineMatch.title}"`);
+            return {
+              success: true,
+              action: actionType,
+              message: `Deleted routine protocol "${routineMatch.title}" and cleared future occurrences.`
+            };
+          }
+
           if (!search.found) throw new Error(`Could not find task matching "${query}".`);
 
+          // 1. Delete the primary matched task
           store.deleteTask(search.task.id, search.date);
+
+          // 2. Clear any duplicate task instances on that date so none remain visible
+          if (!payload.id && store.tasks[search.date]) {
+            const qNorm = normStr(query);
+            const duplicates = store.tasks[search.date].filter(t => 
+              t.id !== search.task.id && (
+                t.title?.toLowerCase() === search.task.title.toLowerCase() ||
+                normStr(t.title) === qNorm
+              )
+            );
+            duplicates.forEach(dup => {
+              store.deleteTask(dup.id, search.date);
+            });
+          }
+
+          // 3. If also requested or if the user asked to delete routine, remove the routine protocol
+          if (payload.deleteRoutine && search.task.isRoutine && search.task.routineId) {
+            store.deleteRoutine(search.task.routineId);
+          }
+
           toast.success(`Task deleted: "${search.task.title}"`);
           return { success: true, message: `Deleted task "${search.task.title}".` };
         }

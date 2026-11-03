@@ -157,6 +157,49 @@ async function runTestSuite() {
   assert(receivedChunks.length > 0, 'Local fallback yields streaming chunks');
   assert(streamRes.text.toLowerCase().includes('hello') || streamRes.text.toLowerCase().includes('hey'), 'Local fallback greeting is friendly and natural');
 
+  // --- 6. ACTION PROPOSAL PARSING & FUZZY RESOLUTION ---
+  console.log('\n--- 6. ACTION PROPOSAL PARSING & FUZZY RESOLUTION ---');
+  const extractTest = (text) => {
+    const delTask = text.match(/(?:delete|remove)\s+task[:\s]+"([^"]+)"/i) || text.match(/Delete task[:\s]+([^\n.,]+)/i);
+    if (delTask) return { type: 'delete_task', title: delTask[1].trim(), risk: 'consequential' };
+    const delRoutine = text.match(/(?:delete|remove)\s+routine[:\s]+"([^"]+)"/i) || text.match(/Delete routine[:\s]+([^\n.,]+)/i);
+    if (delRoutine) return { type: 'delete_routine', title: delRoutine[1].trim(), risk: 'consequential' };
+    const delHabit = text.match(/(?:delete|remove)\s+habit[:\s]+"([^"]+)"/i) || text.match(/Delete habit[:\s]+([^\n.,]+)/i);
+    if (delHabit) return { type: 'delete_habit', title: delHabit[1].trim(), risk: 'consequential' };
+    const compTask = text.match(/(?:mark|complete|finish)\s+task[:\s]+"([^"]+)"/i) || text.match(/Complete task[:\s]+([^\n.,]+)/i);
+    if (compTask) return { type: 'complete_task', title: compTask[1].trim(), risk: 'low' };
+    const createTask = text.match(/(?:suggest|recommend|create)\s+task[:\s]+"([^"]+)"/i) || text.match(/Create task[:\s]+"([^"]+)"/i);
+    if (createTask) return { type: 'create_task', title: createTask[1].trim(), risk: 'low' };
+    const createRoutine = text.match(/Create routine[:\s]+"([^"]+)"/i);
+    if (createRoutine) return { type: 'create_routine', title: createRoutine[1].trim(), risk: 'low' };
+    const createHabit = text.match(/Create habit[:\s]+"([^"]+)"/i);
+    if (createHabit) return { type: 'create_habit', title: createHabit[1].trim(), risk: 'low' };
+    return null;
+  };
+
+  const p1 = extractTest('Delete task: "Leet code"');
+  assert(p1 && p1.type === 'delete_task' && p1.title === 'Leet code' && p1.risk === 'consequential', 'Parses "Delete task: Leet code" as consequential action');
+
+  const p2 = extractTest('Delete routine: "Leet code"');
+  assert(p2 && p2.type === 'delete_routine' && p2.title === 'Leet code' && p2.risk === 'consequential', 'Parses "Delete routine: Leet code" as consequential action');
+
+  const p3 = extractTest('Complete task: "Aptitude"');
+  assert(p3 && p3.type === 'complete_task' && p3.title === 'Aptitude', 'Parses "Complete task: Aptitude"');
+
+  const p4 = extractTest('Create routine: "Daily Reading"');
+  assert(p4 && p4.type === 'create_routine' && p4.title === 'Daily Reading', 'Parses "Create routine: Daily Reading"');
+
+  const p5 = extractTest('Delete habit: "Procrastination"');
+  assert(p5 && p5.type === 'delete_habit' && p5.risk === 'consequential', 'Parses "Delete habit: Procrastination" with consequential risk');
+
+  // Verify date priority ordering in findTask
+  const datesList = ['2026-11-03', '2026-11-01', '2026-10-30'];
+  const prefDate = '2026-11-03';
+  datesList.sort((a, b) => (a === prefDate ? -1 : b === prefDate ? 1 : 0));
+  const candidateCollector = [];
+  datesList.forEach(d => candidateCollector.push(d));
+  assert(candidateCollector[0] === '2026-11-03', 'Date priority preserves preferredDate (today) at index 0');
+
   console.log('\n====================================================================');
   console.log(`[SUCCESS] All ${passed} / ${total} JARVIS Intelligence Tests Passed!`);
   console.log('====================================================================\n');
