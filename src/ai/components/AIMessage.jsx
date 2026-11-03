@@ -142,3 +142,4 @@ export default function AIMessage({ message, onDelete }) {
     </div>
   );
 }
+

@@ -109,3 +109,4 @@ export function validateSuggestion(sug) {
     impact: ['High', 'Medium', 'Low'].includes(sug.impact) ? sug.impact : 'Medium'
   };
 }
+

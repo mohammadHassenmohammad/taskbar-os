@@ -82,3 +82,4 @@ export class BaseAIProvider {
     throw new Error('generateSuggestions must be implemented by provider');
   }
 }
+

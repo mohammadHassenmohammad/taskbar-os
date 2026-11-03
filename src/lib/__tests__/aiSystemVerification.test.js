@@ -236,3 +236,4 @@ runTestSuite().catch(err => {
   console.error('\n\x1b[31m[FAILED]\x1b[0m Test suite encountered fatal error:', err);
   process.exit(1);
 });
+

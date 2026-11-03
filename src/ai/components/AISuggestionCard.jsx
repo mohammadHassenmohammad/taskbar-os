@@ -156,3 +156,4 @@ export default function AISuggestionCard({ suggestion, onDismiss }) {
     </div>
   );
 }
+

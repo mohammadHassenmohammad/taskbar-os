@@ -268,3 +268,4 @@ Each suggestion MUST be an object with:
     return Array.isArray(res) ? res : (res.suggestions || []);
   }
 }
+

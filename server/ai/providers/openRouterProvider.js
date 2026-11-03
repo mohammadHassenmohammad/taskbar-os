@@ -142,3 +142,4 @@ export class OpenRouterProvider extends BaseAIProvider {
     return Array.isArray(res) ? res : (res.suggestions || []);
   }
 }
+
