@@ -1,12 +1,29 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Bot, Sparkles, CheckSquare, Dumbbell, Utensils, Timer, Droplets, Calendar, FileText, Repeat } from 'lucide-react';
+import { 
+  Bot, Sparkles, CheckSquare, Dumbbell, Utensils, Timer, Droplets, Calendar, 
+  FileText, Repeat, Mic, Radio, Settings, Activity, Volume2 
+} from 'lucide-react';
 import { useAI } from '../ai/hooks/useAI';
 import AIChat from '../ai/components/AIChat';
 import AIStatus from '../ai/components/AIStatus';
+import JARVISVoiceOverlay from '../ai/voice/components/JARVISVoiceOverlay';
+import VoiceSettingsPanel from '../ai/voice/components/VoiceSettingsPanel';
+import VoiceDiagnosticsModal from '../ai/voice/components/VoiceDiagnosticsModal';
+import { VoiceStateManager } from '../ai/voice/voiceStateManager';
+import { useStore } from '../store/useStore';
 
 export default function Jarvis() {
   const ai = useAI();
+  const store = useStore();
+  const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  const [showVoiceDiagnostics, setShowVoiceDiagnostics] = useState(false);
+
+  // Persistent voice manager bound to active store
+  const voiceManager = useMemo(() => {
+    return new VoiceStateManager(() => useStore.getState());
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%', minHeight: 'calc(100vh - 120px)' }}>
@@ -61,8 +78,52 @@ export default function Jarvis() {
           </div>
         </div>
 
-        {/* Live Status */}
-        <AIStatus status={ai.status} />
+        {/* Voice Controls & Live Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setShowVoiceOverlay(true);
+              voiceManager.toggleListening();
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800 }}
+          >
+            <Mic size={14} />
+            <span>Voice Assistant</span>
+          </button>
+
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              setShowVoiceOverlay(true);
+              voiceManager.toggleHandsFree();
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
+          >
+            <Radio size={14} />
+            <span>Hands-Free</span>
+          </button>
+
+          <button
+            className="btn btn-ghost btn-icon btn-sm"
+            onClick={() => setShowVoiceSettings(true)}
+            title="Voice & Kokoro Settings"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <Settings size={15} />
+          </button>
+
+          <button
+            className="btn btn-ghost btn-icon btn-sm"
+            onClick={() => setShowVoiceDiagnostics(true)}
+            title="Voice Diagnostics Centre"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <Activity size={15} />
+          </button>
+
+          <AIStatus status={ai.status} />
+        </div>
       </motion.div>
 
       {/* Quick Natural Command Bar */}
@@ -122,6 +183,32 @@ export default function Jarvis() {
       <div style={{ flex: 1, minHeight: 0 }}>
         <AIChat ai={ai} />
       </div>
+
+      {/* Voice Assistant Overlay */}
+      {showVoiceOverlay && (
+        <JARVISVoiceOverlay
+          voiceManager={voiceManager}
+          onClose={() => setShowVoiceOverlay(false)}
+          onOpenSettings={() => setShowVoiceSettings(true)}
+          onOpenDiagnostics={() => setShowVoiceDiagnostics(true)}
+        />
+      )}
+
+      {/* Voice Settings Modal */}
+      {showVoiceSettings && (
+        <VoiceSettingsPanel
+          voiceManager={voiceManager}
+          onClose={() => setShowVoiceSettings(false)}
+        />
+      )}
+
+      {/* Voice Diagnostics Centre */}
+      {showVoiceDiagnostics && (
+        <VoiceDiagnosticsModal
+          voiceManager={voiceManager}
+          onClose={() => setShowVoiceDiagnostics(false)}
+        />
+      )}
     </div>
   );
 }

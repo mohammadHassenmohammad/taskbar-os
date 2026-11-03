@@ -6,7 +6,7 @@ import {
   validateDailyPlan,
   validateWeeklyReport,
   validateSuggestion
-} from '../schemas/aiSchemas';
+} from '../schemas/aiSchemas.js';
 
 /**
  * Frontend AI Client Service

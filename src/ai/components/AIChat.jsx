@@ -15,6 +15,9 @@ import {
   Mic, MicOff, Volume2, VolumeX
 } from 'lucide-react';
 import AIMessage from './AIMessage';
+import { kokoroTTS } from '../voice/tts/kokoroProvider';
+import { ContextualSpeechCorrector } from '../voice/contextualCorrector';
+import { useStore } from '../../store/useStore';
 
 const SUGGESTED_PROMPTS = [
   'How was my productivity this week?',
@@ -78,7 +81,10 @@ export default function AIChat({ ai }) {
       recognition.onresult = (event) => {
         const transcript = event.results?.[0]?.[0]?.transcript;
         if (transcript) {
-          setInputText(prev => prev ? `${prev} ${transcript}` : transcript);
+          const store = useStore.getState();
+          const corrected = ContextualSpeechCorrector.correctTranscript(transcript, store);
+          const finalText = corrected.corrected || transcript;
+          setInputText(prev => prev ? `${prev} ${finalText}` : finalText);
         }
       };
       recognition.onerror = (err) => {

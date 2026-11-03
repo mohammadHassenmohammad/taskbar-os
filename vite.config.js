@@ -49,6 +49,15 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), aiDevServerPlugin()],
+    worker: {
+      format: 'es'
+    },
+    build: {
+      target: 'esnext'
+    },
+    optimizeDeps: {
+      exclude: ['@moonshine-ai/moonshine-wasm', 'kokoro-js']
+    },
     server: {
       port: 5173,
     },
