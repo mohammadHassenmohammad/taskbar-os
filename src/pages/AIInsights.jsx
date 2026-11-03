@@ -1,9 +1,25 @@
-import { useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
-import { motion } from 'framer-motion';
-import { Brain, TrendingUp, AlertTriangle, Zap, Target, Calendar, Activity, Lightbulb } from 'lucide-react';
-import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Brain, TrendingUp, AlertTriangle, Zap, Target, Calendar, 
+  Activity, Lightbulb, MessageSquare, FileText, CheckCircle2,
+  RefreshCw, Dumbbell, Utensils, Clock, Sparkles
+} from 'lucide-react';
+import { 
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, 
+  LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid 
+} from 'recharts';
+
+import { useAI } from '../ai/hooks/useAI';
+import AIChat from '../ai/components/AIChat';
+import AIDailyPlanner from '../ai/components/AIDailyPlanner';
+import AIReportCard from '../ai/components/AIReportCard';
+import AISuggestionCard from '../ai/components/AISuggestionCard';
+import AIStatus from '../ai/components/AIStatus';
+import { aiService } from '../ai/services/aiService';
+import { prepareFullContext } from '../ai/services/aiContextService';
 
 function InsightCard({ icon: Icon, title, body, evidence, color, delay = 0, actionTab, actionLabel, onAction }) {
   return (
@@ -12,7 +28,7 @@ function InsightCard({ icon: Icon, title, body, evidence, color, delay = 0, acti
         background: 'var(--bg-card)',
         border: `1px solid ${color}22`,
         borderLeft: `4px solid ${color}`,
-        borderRadius: 'var(--radius-lg)',
+        borderRadius: 'var(--radius-lg, 16px)',
         padding: '18px 20px',
         display: 'flex',
         flexDirection: 'column',
@@ -22,14 +38,16 @@ function InsightCard({ icon: Icon, title, body, evidence, color, delay = 0, acti
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay, duration: 0.35 }}
     >
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <div style={{ width: 34, height: 34, borderRadius: 10, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon size={18} color={color} />
           </div>
           <div>
             <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--text-primary)' }}>{title}</div>
-            <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>INSIGHT OBSERVATION</div>
+            <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
+              MEASURED OBSERVATION
+            </div>
           </div>
         </div>
 
@@ -44,11 +62,11 @@ function InsightCard({ icon: Icon, title, body, evidence, color, delay = 0, acti
         )}
       </div>
 
-      <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{body}</div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{body}</div>
 
       {evidence && (
         <div style={{ padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border-subtle)', fontSize: 11, display: 'flex', gap: 8, alignItems: 'center' }}>
-          <strong style={{ color: 'var(--accent-primary)', textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.5 }}>EVIDENCE:</strong>
+          <strong style={{ color: 'var(--accent-primary)', textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.5 }}>MEASURED EVIDENCE:</strong>
           <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{evidence}</span>
         </div>
       )}
@@ -57,11 +75,21 @@ function InsightCard({ icon: Icon, title, body, evidence, color, delay = 0, acti
 }
 
 export default function AIInsights() {
+  const store = useStore();
   const { 
     tasks, gamification, getCrossModuleInsights, 
     setPage, setDietActiveDate, setGymActiveDate 
-  } = useStore();
+  } = store;
 
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'chat' | 'planner' | 'reports'
+  const [reportPeriod, setReportPeriod] = useState('weekly');
+  const [suggestions, setSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [activeAnalysis, setActiveAnalysis] = useState('productivity');
+  const [analysisData, setAnalysisData] = useState(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+
+  const ai = useAI();
   const today = format(new Date(), 'yyyy-MM-dd');
 
   const handleAction = (tab) => {
@@ -69,6 +97,46 @@ export default function AIInsights() {
     if (tab === 'gym') setGymActiveDate(today);
     setPage(tab || 'today');
   };
+
+  // Load Actionable Suggestions on mount
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      setLoadingSuggestions(true);
+      try {
+        const fullContext = prepareFullContext(store);
+        const res = await aiService.getSuggestions(fullContext);
+        setSuggestions(res.slice(0, 4));
+      } catch (err) {
+        console.error('Failed to load suggestions:', err);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    };
+    fetchSuggestions();
+  }, []);
+
+  // Run modular analysis
+  const runAnalysis = async (type) => {
+    setActiveAnalysis(type);
+    setLoadingAnalysis(true);
+    try {
+      const fullContext = prepareFullContext(store);
+      const dataPayload = type === 'productivity' ? fullContext.productivity :
+                          type === 'habits' ? fullContext.habits :
+                          type === 'workouts' ? fullContext.workouts :
+                          type === 'nutrition' ? fullContext.nutrition : fullContext;
+      const res = await aiService.analyze(type, dataPayload);
+      setAnalysisData(res);
+    } catch (err) {
+      console.error('Analysis error:', err);
+    } finally {
+      setLoadingAnalysis(false);
+    }
+  };
+
+  useEffect(() => {
+    runAnalysis('productivity');
+  }, []);
 
   const realInsights = useMemo(() => {
     const list = getCrossModuleInsights(today);
@@ -98,7 +166,7 @@ export default function AIInsights() {
     });
   }, [tasks]);
 
-  // Skill radar (category completion rates)
+  // Skill radar
   const radarData = useMemo(() => {
     const cats = ['Work', 'Personal', 'Health', 'Learning', 'Creative', 'Social'];
     return cats.map((cat) => {
@@ -114,11 +182,9 @@ export default function AIInsights() {
     const total = allTasks.length;
     const completed = allTasks.filter((t) => t?.completed).length;
     const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
-
     const highPriTotal = allTasks.filter((t) => t?.priority === 'High').length;
     const highPriDone = allTasks.filter((t) => t?.priority === 'High' && t?.completed).length;
     const highPriRate = highPriTotal > 0 ? Math.round((highPriDone / highPriTotal) * 100) : 0;
-
     const currentStreak = Number(gamification?.streak) || 0;
     const maxStreak = Math.max(currentStreak, Number(gamification?.maxStreak) || currentStreak);
 
@@ -127,43 +193,6 @@ export default function AIInsights() {
 
   const currentStreak = Number(gamification?.streak) || 0;
 
-  // AI-generated insights
-  const insights = useMemo(() => {
-    const ins = [];
-    if (allTasks.length === 0) {
-      ins.push({ icon: Target, title: 'Getting Started', body: 'Add your first tasks to unlock personalized productivity insights tailored to your actual patterns.', color: 'var(--accent-primary)' });
-      return ins;
-    }
-    if (patterns.rate >= 80) {
-      ins.push({ icon: Zap, title: 'High Performer', body: `Consistent execution! Your ${patterns.rate}% completion rate demonstrates strong focus and daily follow-through.`, color: 'var(--color-success)' });
-    } else if (patterns.rate >= 50) {
-      ins.push({ icon: TrendingUp, title: 'Growing Steadily', body: `Your ${patterns.rate}% completion rate shows steady progress. Focus on closing active tasks before starting new ones.`, color: 'var(--color-info)' });
-    } else {
-      ins.push({ icon: AlertTriangle, title: 'Productivity Alert', body: `Your completion rate is currently ${patterns.rate}%. Consider scheduling fewer, higher-leverage tasks each day.`, color: 'var(--color-warning)' });
-    }
-
-    if (patterns.highPriRate < 60 && patterns.highPriTotal > 2) {
-      ins.push({ icon: AlertTriangle, title: 'Priority Bottleneck', body: `Only ${patterns.highPriRate}% of high-priority tasks are completed. Schedule high-impact items during your peak morning energy window.`, color: 'var(--color-danger)' });
-    } else if (patterns.highPriTotal > 0) {
-      ins.push({ icon: Target, title: 'Priority Focus', body: `Great discipline! You are completing ${patterns.highPriRate}% of high-priority tasks.`, color: 'var(--color-success)' });
-    }
-
-    if (currentStreak >= 7) {
-      ins.push({ icon: Activity, title: 'Streak Champion', body: `${currentStreak}-day consistency streak. Regular daily action builds lasting momentum.`, color: 'var(--color-warning)' });
-    } else if (currentStreak === 0) {
-      ins.push({ icon: Calendar, title: 'Build Consistency', body: 'Completing even one task today maintains streak momentum and focus.', color: 'var(--accent-secondary)' });
-    }
-
-    if (patterns.maxStreak >= 5) {
-      ins.push({ icon: Brain, title: 'Consistency Trend', body: `You achieved a ${patterns.maxStreak}-day streak recently. Maintain this routine to consolidate habits.`, color: 'var(--accent-primary)' });
-    }
-
-    ins.push({ icon: Lightbulb, title: 'Execution Tip', body: 'Group similar administrative tasks together to protect uninterrupted deep focus blocks.', color: 'var(--accent-secondary)' });
-
-    return ins;
-  }, [patterns, currentStreak, allTasks.length]);
-
-  // Focus score (0-100) — guaranteed non-NaN
   const focusScore = Math.min(100, Math.max(0, Math.round(
     ((patterns.rate || 0) * 0.4) +
     ((patterns.highPriRate || 0) * 0.3) +
@@ -172,131 +201,304 @@ export default function AIInsights() {
   ))) || 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Header */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, padding: '0 4px' }}>
+      {/* Header bar */}
       <motion.div
-        style={{ display: 'flex', alignItems: 'center', gap: 16 }}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div style={{
-          width: 48, height: 48, borderRadius: 14,
-          background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: 'var(--shadow-glow)', fontSize: 22,
-        }}>
-          🤖
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: 14,
+            background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: 'var(--shadow-glow)', fontSize: 22,
+          }}>
+            🤖
+          </div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)' }}>
+              Tactical AI Intelligence
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Evidence-based analytics, daily planning & personalized debriefs
+            </div>
+          </div>
         </div>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>AI Productivity Coach</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Personalized insights based on your patterns</div>
-        </div>
-      </motion.div>
 
-      {/* Score cards */}
-      <div className="grid-3">
-        {[
-          { label: 'Focus Score', value: focusScore, suffix: '/100', color: 'var(--accent-primary)' },
-          { label: 'Consistency', value: Math.min(100, gamification.streak * 10), suffix: '%', color: 'var(--color-success)' },
-          { label: 'Completion Rate', value: patterns.rate, suffix: '%', color: 'var(--color-info)' },
-        ].map((s, i) => (
-          <motion.div
-            key={s.label}
-            className="stat-card"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.08 }}
+        {/* Tab switcher */}
+        <div style={{ display: 'flex', background: 'var(--bg-elevated)', padding: 4, borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
+          <button
+            className={`btn btn-sm ${activeTab === 'overview' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('overview')}
+            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8 }}
           >
-            <span className="stat-label">{s.label}</span>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-              <span className="stat-value" style={{ color: s.color }}>{s.value}</span>
-              <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>{s.suffix}</span>
-            </div>
-            <div style={{ height: 4, background: 'var(--border-subtle)', borderRadius: 4, overflow: 'hidden', marginTop: 4 }}>
-              <motion.div
-                style={{ height: '100%', background: s.color, borderRadius: 4 }}
-                initial={{ width: 0 }}
-                animate={{ width: `${s.value}%` }}
-                transition={{ delay: 0.3 + i * 0.1, duration: 0.8 }}
-              />
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="grid-2">
-        {/* 30-day trend */}
-        <motion.div className="card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-          <div className="section-title" style={{ marginBottom: 16 }}>30-Day Productivity Trend</div>
-          <div style={{ width: '100%', height: 190, minWidth: 0 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend30} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} interval={6} />
-                <YAxis domain={[0, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', borderRadius: 8, fontSize: 11 }}
-                  formatter={(v) => v !== null ? [`${v}%`, 'Score'] : ['No data', '']}
-                />
-                <Line type="monotone" dataKey="score" stroke="var(--accent-primary)" strokeWidth={2} dot={false} connectNulls={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
-
-        {/* Skill radar */}
-        <motion.div className="card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
-          <div className="section-title" style={{ marginBottom: 16 }}>Skill Spider Chart</div>
-          <div style={{ width: '100%', height: 190, minWidth: 0 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={radarData}>
-                <PolarGrid stroke="var(--border-default)" />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
-                <Radar name="Score" dataKey="score" stroke="var(--accent-primary)" fill="var(--accent-primary)" fillOpacity={0.2} />
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
-      </div>
-
-      {/* AI Insights & Real Cross-Module Intelligence */}
-      <div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Brain size={16} color="var(--accent-primary)" />
-          <span>Real-Data Cross-Module Intelligence & Actionable Insights</span>
+            <Brain size={14} style={{ marginRight: 6 }} />
+            Overview & Analysis
+          </button>
+          <button
+            className={`btn btn-sm ${activeTab === 'chat' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('chat')}
+            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8 }}
+          >
+            <MessageSquare size={14} style={{ marginRight: 6 }} />
+            AI Assistant
+          </button>
+          <button
+            className={`btn btn-sm ${activeTab === 'planner' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('planner')}
+            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8 }}
+          >
+            <Calendar size={14} style={{ marginRight: 6 }} />
+            Daily Planner
+          </button>
+          <button
+            className={`btn btn-sm ${activeTab === 'reports' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('reports')}
+            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 8 }}
+          >
+            <FileText size={14} style={{ marginRight: 6 }} />
+            Strategic Reports
+          </button>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {[...realInsights, ...insights].map((ins, i) => (
-            <InsightCard key={i} {...ins} onAction={handleAction} delay={0.3 + i * 0.06} />
-          ))}
-        </div>
-      </div>
-
-      {/* Burnout detector */}
-      <motion.div
-        className="card"
-        style={{
-          background: patterns.rate < 30 && allTasks.length > 5
-            ? 'linear-gradient(135deg, rgba(255,94,114,0.08), rgba(245,166,35,0.05))'
-            : 'linear-gradient(135deg, rgba(16,217,142,0.06), rgba(56,189,248,0.04))',
-          border: `1px solid ${patterns.rate < 30 && allTasks.length > 5 ? 'rgba(255,94,114,0.15)' : 'rgba(16,217,142,0.12)'}`,
-        }}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <span style={{ fontSize: 20 }}>{patterns.rate < 30 && allTasks.length > 5 ? '⚠️' : '✅'}</span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: patterns.rate < 30 && allTasks.length > 5 ? 'var(--color-danger)' : 'var(--color-success)' }}>
-            {patterns.rate < 30 && allTasks.length > 5 ? 'Burnout Risk Detected' : 'Mental Wellness: Good'}
-          </span>
-        </div>
-        <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
-          {patterns.rate < 30 && allTasks.length > 5
-            ? 'Your completion rate is significantly low with many tasks. This could indicate overload or burnout. Consider reducing your daily task count and taking breaks.'
-            : "Your workload and completion patterns look healthy. Keep maintaining a sustainable pace to avoid future burnout. Remember to take breaks!"}
-        </p>
       </motion.div>
+
+      {/* ── TAB 1: OVERVIEW & MODULAR ANALYSIS ── */}
+      {activeTab === 'overview' && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* Provider Status */}
+          <AIStatus status={ai.status} />
+
+          {/* Actionable AI Suggestions Row */}
+          {suggestions.length > 0 && (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Sparkles size={15} />
+                <span>Actionable AI Proposals (Requires Approval)</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+                {suggestions.map((sug, idx) => (
+                  <AISuggestionCard
+                    key={sug.id || idx}
+                    suggestion={sug}
+                    onDismiss={() => setSuggestions(prev => prev.filter(s => s.id !== sug.id))}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Core Score Cards */}
+          <div className="grid-3">
+            {[
+              { label: 'Tactical Focus Score', value: focusScore, suffix: '/100', color: 'var(--accent-primary)' },
+              { label: 'Streak Consistency', value: Math.min(100, gamification.streak * 10), suffix: '%', color: 'var(--color-success)' },
+              { label: 'Mission Completion Rate', value: patterns.rate, suffix: '%', color: 'var(--color-info)' },
+            ].map((s, i) => (
+              <motion.div
+                key={s.label}
+                className="stat-card"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.08 }}
+              >
+                <span className="stat-label">{s.label}</span>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <span className="stat-value" style={{ color: s.color }}>{s.value}</span>
+                  <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>{s.suffix}</span>
+                </div>
+                <div style={{ height: 4, background: 'var(--border-subtle)', borderRadius: 4, overflow: 'hidden', marginTop: 8 }}>
+                  <motion.div
+                    style={{ height: '100%', background: s.color, borderRadius: 4 }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${s.value}%` }}
+                    transition={{ delay: 0.2 + i * 0.1, duration: 0.8 }}
+                  />
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Deep Modular Domain Analysis */}
+          <div className="card" style={{ padding: 24, background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>
+                  Domain Intelligence Evaluations
+                </h3>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Deep analysis synthesized from your actual logged history
+                </div>
+              </div>
+
+              {/* Module Buttons */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[
+                  { id: 'productivity', label: 'Productivity', icon: Brain },
+                  { id: 'habits', label: 'Habits', icon: Target },
+                  { id: 'workouts', label: 'Gym & Volume', icon: Dumbbell },
+                  { id: 'nutrition', label: 'Diet & Energy', icon: Utensils }
+                ].map(mod => {
+                  const Icon = mod.icon;
+                  const isSel = activeAnalysis === mod.id;
+                  return (
+                    <button
+                      key={mod.id}
+                      type="button"
+                      className={`btn btn-sm ${isSel ? 'btn-primary' : 'btn-ghost'}`}
+                      onClick={() => runAnalysis(mod.id)}
+                      style={{ fontSize: 11, fontWeight: 700, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <Icon size={13} />
+                      <span>{mod.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {loadingAnalysis ? (
+              <div style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-muted)' }}>
+                <RefreshCw size={24} className="spin" color="var(--accent-primary)" style={{ margin: '0 auto 10px' }} />
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Evaluating {activeAnalysis} patterns…</div>
+              </div>
+            ) : analysisData ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ padding: 16, background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                    Executive Evaluation Summary
+                  </div>
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+                    {analysisData.summary}
+                  </p>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+                  {analysisData.recommendations || analysisData.suggestions ? (
+                    <div style={{ padding: 14, background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: '#10b981', textTransform: 'uppercase', marginBottom: 8 }}>
+                        Strategic Recommendations
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {(analysisData.recommendations || analysisData.suggestions || []).map((rec, i) => (
+                          <li key={i}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {analysisData.strongestHabits || analysisData.bestPerformingDays ? (
+                    <div style={{ padding: 14, background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent-primary)', textTransform: 'uppercase', marginBottom: 8 }}>
+                        Top Strong Points
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {(analysisData.strongestHabits || analysisData.bestPerformingDays || []).map((sp, i) => (
+                          <li key={i}>{sp}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+
+                {analysisData.disclaimer && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', padding: '6px 10px', background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
+                    🛡️ {analysisData.disclaimer}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Measured Charts Row */}
+          <div className="grid-2">
+            {/* 30-day trend */}
+            <motion.div className="card" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+              <div className="section-title" style={{ marginBottom: 16 }}>30-Day Productivity Trend</div>
+              <div style={{ width: '100%', height: 190, minWidth: 0 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trend30} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} interval={6} />
+                    <YAxis domain={[0, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', borderRadius: 8, fontSize: 11 }}
+                      formatter={(v) => v !== null ? [`${v}%`, 'Score'] : ['No data', '']}
+                    />
+                    <Line type="monotone" dataKey="score" stroke="var(--accent-primary)" strokeWidth={2} dot={false} connectNulls={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+
+            {/* Skill radar */}
+            <motion.div className="card" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+              <div className="section-title" style={{ marginBottom: 16 }}>Category Competency Radar</div>
+              <div style={{ width: '100%', height: 190, minWidth: 0 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart data={radarData}>
+                    <PolarGrid stroke="var(--border-default)" />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                    <Radar name="Score" dataKey="score" stroke="var(--accent-primary)" fill="var(--accent-primary)" fillOpacity={0.2} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Cross-Module Measured Insights */}
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Brain size={16} color="var(--accent-primary)" />
+              <span>Cross-Module Evidence & Recovery Insights</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {realInsights.map((ins, i) => (
+                <InsightCard key={i} {...ins} onAction={handleAction} delay={0.2 + i * 0.05} />
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* ── TAB 2: INTERACTIVE ASSISTANT (CHAT) ── */}
+      {activeTab === 'chat' && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <AIChat ai={ai} />
+        </motion.div>
+      )}
+
+      {/* ── TAB 3: DAILY PLANNER ── */}
+      {activeTab === 'planner' && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <AIDailyPlanner />
+        </motion.div>
+      )}
+
+      {/* ── TAB 4: STRATEGIC REPORTS ── */}
+      {activeTab === 'reports' && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-start', background: 'var(--bg-elevated)', padding: 4, borderRadius: 10, border: '1px solid var(--border-subtle)' }}>
+            <button
+              className={`btn btn-sm ${reportPeriod === 'weekly' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setReportPeriod('weekly')}
+              style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700 }}
+            >
+              Weekly Report
+            </button>
+            <button
+              className={`btn btn-sm ${reportPeriod === 'monthly' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setReportPeriod('monthly')}
+              style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700 }}
+            >
+              Monthly Report
+            </button>
+          </div>
+
+          <AIReportCard period={reportPeriod} />
+        </motion.div>
+      )}
     </div>
   );
 }

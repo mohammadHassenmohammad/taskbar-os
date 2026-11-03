@@ -6,8 +6,9 @@ import {
   Save, Download, Upload, Moon, Sun, Bell, Timer, 
   Volume2, Zap, Shield, User, Globe, Coffee, Monitor, 
   Cloud, RefreshCw, Mail, Lock, Target, Key, Play, Database, Plus, Minus,
-  FileText, AlertTriangle, X, Check
+  FileText, AlertTriangle, X, Check, Brain, Cpu, ShieldCheck
 } from 'lucide-react';
+import { aiService } from '../ai/services/aiService';
 import toast from 'react-hot-toast';
 
 function SettingRow({ label, sub, icon: Icon, children }) {
@@ -54,12 +55,27 @@ export default function Settings() {
     user, updateUserPassword, exportData, importData 
   } = useStore();
   const [activeTab, setActiveTab] = useState('general');
-  const [localSettings, setLocalSettings] = useState(() => ({ ...settings }));
+  const [localSettings, setLocalSettings] = useState(() => ({
+    ...settings,
+    aiEnabled: settings.aiEnabled ?? true,
+    aiPrivacy: settings.aiPrivacy || {
+      includeTasks: true,
+      includeHabits: true,
+      includeWorkouts: true,
+      includeNutrition: true
+    }
+  }));
+  const [aiStatus, setAiStatus] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [isChangingPass, setIsChangingPass] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importPreview, setImportPreview] = useState(null);
   const [createPreBackup, setCreatePreBackup] = useState(true);
+
+  // Load AI Server Status
+  useState(() => {
+    aiService.getStatus().then(setAiStatus).catch(() => {});
+  });
 
   const handleSave = () => {
     updateSettings(localSettings);
@@ -143,6 +159,7 @@ export default function Settings() {
   const tabs = [
     { id: 'profile', label: 'Operative Profile', icon: User },
     { id: 'general', label: 'General Protocols', icon: Globe },
+    { id: 'ai', label: 'AI & Intelligence', icon: Brain },
     { id: 'focus', label: 'Focus Matrix', icon: Timer },
     { id: 'notifications', label: 'Neural Alerts', icon: Bell },
     { id: 'account', label: 'Security & Data', icon: Shield },
@@ -377,6 +394,139 @@ export default function Settings() {
 
                 <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
                    <button className="btn btn-primary" onClick={handleSave}><Save size={14} /> Update Protocols</button>
+                </div>
+              </div>
+            )}
+
+            {/* AI & Intelligence */}
+            {activeTab === 'ai' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                <div style={{ marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)', letterSpacing: -0.5 }}>AI & Intelligence Protocols</h3>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>Manage AI provider connections, model parameters, and strict data privacy boundaries.</p>
+                </div>
+
+                <SettingRow label="AI Assistant & Insights" sub="Enable context-aware intelligence, weekly debriefs, and conversational advice." icon={Brain}>
+                   <Switch 
+                     checked={localSettings.aiEnabled} 
+                     onChange={(v) => setLocalSettings({...localSettings, aiEnabled: v})} 
+                   />
+                </SettingRow>
+
+                {/* AI Provider Status Card */}
+                <div style={{ padding: 20, background: 'var(--bg-elevated)', borderRadius: 16, border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Cpu size={18} color="var(--accent-primary)" />
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>Active Provider & Model Architecture</span>
+                    </div>
+                    <span className="badge" style={{
+                      background: aiStatus?.isCloudConfigured ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                      color: aiStatus?.isCloudConfigured ? '#10b981' : '#f59e0b',
+                      fontSize: 10, fontWeight: 800
+                    }}>
+                      {aiStatus?.isCloudConfigured ? 'GOOGLE GEMINI (CLOUD)' : 'LOCAL DETERMINISTIC (OFFLINE)'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+                    <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: 10 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Active Model</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>
+                        {aiStatus?.isCloudConfigured ? aiStatus.providers?.gemini?.model : 'Local Analytics Engine'}
+                      </div>
+                    </div>
+                    <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: 10 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Rate Limit Guardrail</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-primary)' }}>
+                        {aiStatus?.limits?.rpmLimit || 15} RPM / {aiStatus?.limits?.dailyLimit || 1500} RPD
+                      </div>
+                    </div>
+                    <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: 10 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Today's Requests</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: '#10b981' }}>
+                        {aiStatus?.limits?.dailyRequestsCount || 0} calls
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    💡 <strong>Zero-Credential Policy:</strong> API keys are strictly configured on the server-side via environment variables (e.g. <code>GEMINI_API_KEY</code> in <code>.env</code>) and are never exposed in the browser or public code.
+                  </div>
+                </div>
+
+                {/* Privacy & Data Sharing */}
+                <div style={{ padding: 20, background: 'var(--bg-elevated)', borderRadius: 16, border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <ShieldCheck size={18} color="var(--accent-primary)" />
+                    <span>Data Privacy & Context Boundaries</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px 0', lineHeight: 1.5 }}>
+                    Choose which data categories are aggregated into AI context prompts. Only anonymous numerical summaries and non-sensitive titles are ever included.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>Include Task Titles & Counts</span>
+                      <Switch 
+                        checked={localSettings.aiPrivacy?.includeTasks ?? true} 
+                        onChange={(v) => setLocalSettings({
+                          ...localSettings, 
+                          aiPrivacy: { ...(localSettings.aiPrivacy || {}), includeTasks: v }
+                        })} 
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>Include Habit Consistency & Streaks</span>
+                      <Switch 
+                        checked={localSettings.aiPrivacy?.includeHabits ?? true} 
+                        onChange={(v) => setLocalSettings({
+                          ...localSettings, 
+                          aiPrivacy: { ...(localSettings.aiPrivacy || {}), includeHabits: v }
+                        })} 
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>Include Workout History & Volume</span>
+                      <Switch 
+                        checked={localSettings.aiPrivacy?.includeWorkouts ?? true} 
+                        onChange={(v) => setLocalSettings({
+                          ...localSettings, 
+                          aiPrivacy: { ...(localSettings.aiPrivacy || {}), includeWorkouts: v }
+                        })} 
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>Include Nutrition & Hydration Logs</span>
+                      <Switch 
+                        checked={localSettings.aiPrivacy?.includeNutrition ?? true} 
+                        onChange={(v) => setLocalSettings({
+                          ...localSettings, 
+                          aiPrivacy: { ...(localSettings.aiPrivacy || {}), includeNutrition: v }
+                        })} 
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* AI Cache Purge */}
+                <SettingRow label="AI Memory & Report Cache" sub="Clear all locally cached conversational messages, suggestions, and generated debriefs." icon={RefreshCw}>
+                   <button 
+                     type="button" 
+                     className="btn btn-ghost btn-sm text-danger"
+                     onClick={() => {
+                       localStorage.removeItem('taskbar_ai_chat_history');
+                       localStorage.removeItem('taskbar_ai_report_weekly');
+                       localStorage.removeItem('taskbar_ai_report_monthly');
+                       toast.success('AI conversation history & report cache purged');
+                     }}
+                   >
+                     Purge AI Cache
+                   </button>
+                </SettingRow>
+
+                <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+                   <button className="btn btn-primary" onClick={handleSave}><Save size={14} /> Save AI Preferences</button>
                 </div>
               </div>
             )}

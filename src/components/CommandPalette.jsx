@@ -4,7 +4,7 @@ import {
   Search, X, CheckSquare, ArrowRight, Zap, Target, 
   Dumbbell, Utensils, Clock, Calendar, BarChart2, 
   Settings, Shield, Plus, Droplets, Sun, Moon, Sparkles,
-  Command, ChevronRight, Hash
+  Command, ChevronRight, Hash, Brain, Bot
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -28,12 +28,24 @@ export default function CommandPalette({ onClose, onOpenCreateTask }) {
     { id: 'calendar', label: 'Calendar & Weekly Planner', icon: Calendar, category: 'Navigation', shortcut: 'G C' },
     { id: 'analytics', label: 'Analytics & Insights', icon: BarChart2, category: 'Navigation', shortcut: 'G A' },
     { id: 'routines', label: 'Routines & Rituals', icon: Sparkles, category: 'Navigation', shortcut: 'G R' },
+    { id: 'ai', label: 'Tactical AI Intelligence', icon: Brain, category: 'Navigation', shortcut: 'G I' },
     { id: 'settings', label: 'Settings & Cloud Backup', icon: Settings, category: 'Navigation', shortcut: 'G S' },
     { id: 'admin', label: 'Admin & System Diagnostics', icon: Shield, category: 'Navigation', shortcut: 'G X' },
   ], []);
 
   // Quick actions list
   const quickActions = useMemo(() => [
+    {
+      id: 'action-consult-ai',
+      label: 'Consult AI Assistant & Planner',
+      subtitle: 'Ask questions or synthesize daily schedules',
+      icon: Bot,
+      category: 'Actions',
+      action: () => {
+        setPage('ai');
+        onClose();
+      }
+    },
     {
       id: 'action-create-task',
       label: 'Create New Task',

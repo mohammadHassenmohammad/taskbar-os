@@ -9,7 +9,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron:dev": "electron .",
-    "electron:build": "vite build && electron-builder"
+    "electron:build": "vite build && electron-builder",
+    "test": "node src/lib/__tests__/systemVerification.test.js && node src/lib/__tests__/aiSystemVerification.test.js",
+    "test:ai": "node src/lib/__tests__/aiSystemVerification.test.js",
+    "serve:api": "node server/index.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.3",
