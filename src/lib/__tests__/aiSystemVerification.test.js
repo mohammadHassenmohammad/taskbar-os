@@ -216,14 +216,14 @@ async function runTestSuite() {
   const smallPayload = JSON.stringify({ message: 'Hello' });
   assert(validatePayloadSize(smallPayload) === true, 'Small payload passes size validation');
 
-  const largeString = 'a'.repeat(35 * 1024); // 35 KB > 32 KB limit
+  const largeString = 'a'.repeat(150 * 1024); // 150 KB > 128 KB limit
   let sizeError = null;
   try {
     validatePayloadSize(largeString);
   } catch (err) {
     sizeError = err;
   }
-  assert(sizeError !== null, 'Payload exceeding 32KB is rejected with error');
+  assert(sizeError !== null, 'Payload exceeding limit is rejected with error');
 
   // Rate limiter check
   const rl1 = checkRateLimit('test_client_ip');

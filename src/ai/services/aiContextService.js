@@ -264,7 +264,26 @@ export function prepareFullContext(state) {
       dueTime: t.dueTime || null
     }));
     context.todayTasks = todayTasks;
-    context.tasks = state.tasks || {};
+    
+    // Prune tasks dictionary: strictly lightweight 7-day window & overdue tasks to keep payload < 10KB
+    const prunedTasks = {};
+    const dateInterval = eachDayOfInterval({
+      start: subDays(new Date(), 7),
+      end: new Date()
+    });
+    dateInterval.forEach(d => {
+      const dStr = format(d, 'yyyy-MM-dd');
+      if (state.tasks?.[dStr]) {
+        prunedTasks[dStr] = state.tasks[dStr].map(t => ({
+          id: t.id,
+          title: t.title,
+          priority: t.priority || 'Medium',
+          category: t.category || 'General',
+          completed: Boolean(t.completed)
+        }));
+      }
+    });
+    context.tasks = prunedTasks;
   }
 
   if (privacy.includeHabits !== false) {

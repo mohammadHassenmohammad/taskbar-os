@@ -8,7 +8,7 @@ let lastDayReset = new Date().toDateString();
 
 const MAX_RPM = parseInt(process.env.AI_RATE_LIMIT_RPM || '15', 10);
 const MAX_RPD = parseInt(process.env.AI_DAILY_LIMIT || '1500', 10);
-const MAX_PAYLOAD_BYTES = 32 * 1024; // 32 KB limit
+const MAX_PAYLOAD_BYTES = parseInt(process.env.AI_MAX_PAYLOAD_BYTES || String(128 * 1024), 10); // 128 KB limit default
 
 export function checkRateLimit(clientId = 'global') {
   const now = Date.now();
@@ -54,11 +54,11 @@ export function checkRateLimit(clientId = 'global') {
   };
 }
 
-export function validatePayloadSize(bodyString) {
+export function validatePayloadSize(bodyString, maxBytes = MAX_PAYLOAD_BYTES) {
   if (!bodyString) return true;
   const byteLength = Buffer.byteLength(bodyString, 'utf8');
-  if (byteLength > MAX_PAYLOAD_BYTES) {
-    throw new Error(`Payload exceeds maximum allowed size (${(byteLength / 1024).toFixed(1)} KB > 32 KB limit).`);
+  if (byteLength > maxBytes) {
+    throw new Error(`Payload exceeds maximum allowed size (${(byteLength / 1024).toFixed(1)} KB > ${(maxBytes / 1024).toFixed(0)} KB limit).`);
   }
   return true;
 }
