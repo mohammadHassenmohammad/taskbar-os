@@ -238,19 +238,33 @@ export function useAI() {
         const priority = action.priority || 'Medium';
         const category = action.category || 'General';
         
-        store.addTask(todayStr, {
+        // Correct signature: addTask(taskData, date)
+        store.addTask({
           title,
           priority,
           category,
           completed: false
-        });
+        }, todayStr);
         toast.success(`Task created: "${title}"`, { icon: '✅' });
       } else if (action.type === 'start_focus') {
-        toast.success('Focus session initiated', { icon: '🎯' });
+        const duration = action.duration || 25;
+        store.startPomodoro('focus', duration);
+        toast.success(`Focus session (${duration}m) initiated`, { icon: '🎯' });
+      } else if (action.type === 'log_water') {
+        const glasses = (store.waterLogs?.[todayStr] || 0) + (action.amount || 1);
+        store.logWater(todayStr, glasses);
+        toast.success(`Hydration logged: ${glasses} glasses total`, { icon: '💧' });
       } else if (action.type === 'log_habit') {
-        if (action.habitId) {
-          store.toggleHabitLog(todayStr, action.habitId);
-          toast.success('Habit logged for today', { icon: '🌟' });
+        const habitQuery = (action.title || action.habitName || '').toLowerCase();
+        const habit = (store.habits || []).find(h => 
+          (h.name || h.title || '').toLowerCase().includes(habitQuery) ||
+          h.id === action.habitId
+        );
+        if (habit) {
+          store.logHabit(habit.id, todayStr, true);
+          toast.success(`Habit "${habit.name || habit.title}" logged for today!`, { icon: '🌟' });
+        } else {
+          toast.error('Could not find matching habit');
         }
       }
     } catch (err) {

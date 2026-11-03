@@ -15,12 +15,15 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Detect actionable suggestion in assistant message (e.g. "Create task: ...")
+  // Detect actionable suggestion in assistant message (tasks, focus, water, habits)
   const extractActionProposal = (text) => {
-    if (!text || !isAssistant) return null;
+    if (!text || !isAssistant || actionHandled) return null;
+
+    // 1. Create task proposal
     const taskMatch = text.match(/(?:suggest|recommend|create)\s+task[:\s]+"([^"]+)"/i) ||
+                      text.match(/Create task[:\s]+"([^"]+)"/i) ||
                       text.match(/(?:suggest|recommend|create)\s+task[:\s]+([^\n.,]+)/i);
-    if (taskMatch && !actionHandled) {
+    if (taskMatch) {
       return {
         type: 'create_task',
         title: taskMatch[1].trim(),
@@ -28,6 +31,37 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
         category: 'Work'
       };
     }
+
+    // 2. Start focus session proposal
+    const focusMatch = text.match(/Start focus session[:\s]+(\d+)\s*(?:mins|minutes)?/i) ||
+                       text.match(/(?:start|begin)\s+(\d+)-minute focus session/i);
+    if (focusMatch) {
+      return {
+        type: 'start_focus',
+        duration: parseInt(focusMatch[1], 10) || 25
+      };
+    }
+
+    // 3. Log water hydration proposal
+    const waterMatch = text.match(/Log water[:\s]+(\d+)\s*(?:glasses|glass)?/i) ||
+                       text.match(/Drink\s+(\d+)\s+glasses of water/i);
+    if (waterMatch) {
+      return {
+        type: 'log_water',
+        amount: parseInt(waterMatch[1], 10) || 1
+      };
+    }
+
+    // 4. Mark habit complete
+    const habitMatch = text.match(/Mark habit complete[:\s]+"([^"]+)"/i) ||
+                       text.match(/Check off habit[:\s]+"([^"]+)"/i);
+    if (habitMatch) {
+      return {
+        type: 'log_habit',
+        title: habitMatch[1].trim()
+      };
+    }
+
     return null;
   };
 
@@ -166,7 +200,10 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
                   Proposed Action
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  Create Task: "{actionProposal.title}"
+                  {actionProposal.type === 'create_task' && `Create Task: "${actionProposal.title}"`}
+                  {actionProposal.type === 'start_focus' && `Start Focus Session: ${actionProposal.duration} mins`}
+                  {actionProposal.type === 'log_water' && `Log Hydration: ${actionProposal.amount} glass${actionProposal.amount > 1 ? 'es' : ''}`}
+                  {actionProposal.type === 'log_habit' && `Log Habit: "${actionProposal.title}"`}
                 </div>
               </div>
             </div>
@@ -182,7 +219,12 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
                 style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
               >
                 <CheckCircle2 size={12} />
-                <span>Approve & Add</span>
+                <span>
+                  {actionProposal.type === 'create_task' && 'Approve & Add'}
+                  {actionProposal.type === 'start_focus' && 'Start Session'}
+                  {actionProposal.type === 'log_water' && 'Log Water'}
+                  {actionProposal.type === 'log_habit' && 'Complete Habit'}
+                </span>
               </button>
               <button
                 type="button"

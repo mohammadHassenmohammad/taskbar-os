@@ -21,6 +21,10 @@ export const INTENT_TYPES = {
   WORKOUTS_QUERY: 'WORKOUTS_QUERY',
   DIET_QUERY: 'DIET_QUERY',
   FOCUS_QUERY: 'FOCUS_QUERY',
+  ROUTINES_QUERY: 'ROUTINES_QUERY',
+  WELLNESS_QUERY: 'WELLNESS_QUERY',
+  SEARCH_QUERY: 'SEARCH_QUERY',
+  CROSS_MODULE_SYNTHESIS: 'CROSS_MODULE_SYNTHESIS',
   PLANNING: 'PLANNING',
   GENERAL_CONVERSATION: 'GENERAL_CONVERSATION'
 };
@@ -49,7 +53,23 @@ export function classifyIntent(userText = '', recentHistory = []) {
     return INTENT_TYPES.MOTIVATION;
   }
 
-  // 5. Contextual Follow-up Comparisons (e.g. "what about last week?", "compare them", "what should I improve?")
+  // 5. General Knowledge & Technical Explanations (when not asking about "my" application data)
+  if (text.match(/^(explain|what is|what are|how does|how do|why is|why does|tell me about|who was|who is|write|code|debug|joke)\b/i) &&
+      !text.match(/\b(my|today|week|schedule|tasks?|habits?|workouts?|diet)\b/i)) {
+    return INTENT_TYPES.GENERAL_KNOWLEDGE;
+  }
+
+  // 6. Universal Search
+  if (text.match(/^(find|search for|look for|where is|did i log|search)\b/i)) {
+    return INTENT_TYPES.SEARCH_QUERY;
+  }
+
+  // 7. Holistic Cross-Module / Daily Overview
+  if (text.match(/(what should i work on today|what should i do today|how does my day look|how is my day looking|daily overview|summary of today|breakdown of today)/i)) {
+    return INTENT_TYPES.CROSS_MODULE_SYNTHESIS;
+  }
+
+  // 8. Contextual Follow-up Comparisons (e.g. "what about last week?", "compare them", "what should I improve?")
   if (text.includes('last week') || text.includes('previous week') || text.includes('what about yesterday')) {
     return INTENT_TYPES.PRODUCTIVITY_PREVIOUS;
   }
@@ -61,42 +81,52 @@ export function classifyIntent(userText = '', recentHistory = []) {
     return INTENT_TYPES.SUGGESTION_IMPROVEMENT;
   }
 
-  // 6. Productivity & Progress
+  // 9. Productivity & Progress
   if (text.includes('productivity') || (text.includes('how was') && (text.includes('week') || text.includes('progress')))) {
     return INTENT_TYPES.PRODUCTIVITY_CURRENT;
   }
 
-  // 7. Tasks & Prioritization
-  if (text.includes('task') || text.includes('what should i work on') || text.includes('priorit') || text.includes('overdue') || text.includes('to-do') || text.includes('todo')) {
+  // 10. Wellness, Hydration, Sleep, Steps
+  if (text.match(/\b(water|hydration|hydrate|sleep|sleeping|rest|steps|walking|walked|mood|energy)\b/i)) {
+    return INTENT_TYPES.WELLNESS_QUERY;
+  }
+
+  // 11. Routines & Morning Protocols
+  if (text.match(/\b(routine|routines|protocol|protocols|morning ritual|evening ritual)\b/i)) {
+    return INTENT_TYPES.ROUTINES_QUERY;
+  }
+
+  // 12. Tasks & Prioritization
+  if (text.match(/\b(tasks?|prioritize|priority|priorities|overdue|to-do|todo|todos)\b/i) || text.includes('what should i work on')) {
     return INTENT_TYPES.TASKS_QUERY;
   }
 
-  // 8. Habits & Streaks
-  if (text.includes('habit') || text.includes('streak') || text.includes('consistency')) {
+  // 13. Habits & Streaks
+  if (text.match(/\b(habits?|streaks?|consistency)\b/i)) {
     return INTENT_TYPES.HABITS_QUERY;
   }
 
-  // 9. Workouts & Gym
-  if (text.includes('workout') || text.includes('gym') || text.includes('training') || text.includes('exercise') || text.includes('lift')) {
+  // 14. Workouts & Gym
+  if (text.match(/\b(workouts?|gym|training|exercise|exercises|lift|lifting|prs?|personal records?)\b/i)) {
     return INTENT_TYPES.WORKOUTS_QUERY;
   }
 
-  // 10. Diet & Nutrition
-  if (text.includes('diet') || text.includes('food') || text.includes('eat') || text.includes('nutrition') || text.includes('calories') || text.includes('protein')) {
+  // 15. Diet & Nutrition
+  if (text.match(/\b(diet|food|foods|eat|eating|nutrition|calories?|protein|macro|macros)\b/i)) {
     return INTENT_TYPES.DIET_QUERY;
   }
 
-  // 11. Focus & Pomodoro
-  if (text.includes('focus') || text.includes('pomodoro') || text.includes('deep work')) {
+  // 16. Focus & Pomodoro
+  if (text.match(/\b(focus|pomodoro|deep work)\b/i)) {
     return INTENT_TYPES.FOCUS_QUERY;
   }
 
-  // 12. Planning
+  // 17. Planning
   if (text.includes('plan tomorrow') || text.includes('daily plan') || text.includes('schedule tomorrow') || text.includes('plan my day')) {
     return INTENT_TYPES.PLANNING;
   }
 
-  // 13. General Knowledge (programming, science, trivia, questions starting with explain, what is, how to, tell me about)
+  // 18. General Knowledge fallback
   if (text.match(/^(explain|what is|what are|how does|how do|why is|why does|tell me about|who was|write|code|debug|joke)/i)) {
     return INTENT_TYPES.GENERAL_KNOWLEDGE;
   }
@@ -135,6 +165,40 @@ export function orchestrateConversation({ messages = [], context = {}, preferenc
 
     case INTENT_TYPES.MOTIVATION:
       responseStyleGuidance = `The user is asking for motivation. Deliver genuine, constructive, and grounded encouragement. Focus on starting small and building momentum. Avoid toxic positivity or hollow clichés.`;
+      break;
+
+    case INTENT_TYPES.CROSS_MODULE_SYNTHESIS:
+      retrievedData = {
+        snapshot: tools.getDailySnapshot({ date: tools.today }),
+        priorities: tools.getTodayPriorities({ date: tools.today }),
+        pendingTasks: tools.getPendingTasks({ date: tools.today }),
+        workout: tools.getWorkoutDetails({ date: tools.today }),
+        routines: tools.getRoutines()
+      };
+      responseStyleGuidance = `Synthesize their complete operational day across Tasks, Workouts, Routines, and Hydration into an encouraging, structured, and realistic timeline. Recommend their #1 priority first.`;
+      break;
+
+    case INTENT_TYPES.SEARCH_QUERY:
+      const cleanSearchQuery = lastUserMsg.replace(/^(find|search for|look for|where is|search)\s+/i, '').trim();
+      retrievedData = tools.searchApplicationData({ query: cleanSearchQuery });
+      responseStyleGuidance = `The user searched for "${cleanSearchQuery}". Present the matching tasks, habits, workouts, or routines found in their records clearly.`;
+      break;
+
+    case INTENT_TYPES.WELLNESS_QUERY:
+      retrievedData = {
+        hydration: tools.getHydrationStats({ date: tools.today }),
+        sleep: tools.getSleepLogs({ days: 7 }),
+        walking: tools.getWalkingActivity({ date: tools.today })
+      };
+      responseStyleGuidance = `Discuss their hydration, sleep, or physical activity metrics. Provide actionable, supportive recovery or wellness advice.`;
+      break;
+
+    case INTENT_TYPES.ROUTINES_QUERY:
+      retrievedData = {
+        routines: tools.getRoutines(),
+        stats: tools.getRoutineStats()
+      };
+      responseStyleGuidance = `Review their routine protocols and morning/evening habits. Emphasize consistency.`;
       break;
 
     case INTENT_TYPES.PRODUCTIVITY_CURRENT:
@@ -176,24 +240,36 @@ export function orchestrateConversation({ messages = [], context = {}, preferenc
       break;
 
     case INTENT_TYPES.WORKOUTS_QUERY:
-      retrievedData = tools.getWorkoutHistory();
+      retrievedData = {
+        todayWorkout: tools.getWorkoutDetails({ date: tools.today }),
+        history: tools.getWorkoutHistory({ days: 14 }),
+        prs: tools.getPersonalRecords()
+      };
       responseStyleGuidance = `Summarize their workout sessions and total external volume moved. Offer recovery advice if training frequency is high.`;
       break;
 
     case INTENT_TYPES.DIET_QUERY:
-      retrievedData = tools.getNutritionStatistics();
+      retrievedData = {
+        todayMeals: tools.getFoodEntries({ date: tools.today }),
+        stats: tools.getNutritionStatistics(),
+        goals: tools.getDietGoals()
+      };
       responseStyleGuidance = `Summarize daily caloric and protein averages against their targets.`;
       break;
 
     case INTENT_TYPES.FOCUS_QUERY:
-      retrievedData = tools.getFocusStatistics();
+      retrievedData = {
+        stats: tools.getFocusStatistics(),
+        pomodoro: tools.getPomodoroState()
+      };
       responseStyleGuidance = `Summarize their focus time and Pomodoro history.`;
       break;
 
     case INTENT_TYPES.PLANNING:
       retrievedData = {
         todayTasks: tools.getPendingTasks({ date: tools.today }),
-        habits: tools.getHabits()
+        habits: tools.getHabits(),
+        workout: tools.getWorkoutDetails({ date: tools.today })
       };
       responseStyleGuidance = `Help structure a realistic, high-impact schedule for the day. Recommend focus blocks and recovery intervals.`;
       break;
@@ -213,6 +289,7 @@ CRITICAL DIRECTIVES:
 5. For emotional conversations (tired, burnout, bad day), listen with deep empathy and patience before offering advice.
 6. When answering questions about the user's productivity, tasks, habits, workouts, or diet, use the provided RETRIEVED APPLICATION DATA below. Never invent fictional numbers.
 7. Understand conversational references ("that", "it", "last week", "compare them", "what about yesterday") from the recent chat history.
+8. ACTION PROPOSALS: When recommending a new task, you can include \`Create task: "<Task Title>"\` on its own line. For water, \`Log water: 1 glass\`. For focus, \`Start focus session: 25 minutes\`. The UI renders an interactive 1-click button for the user to approve.
 
 ${responseStyleGuidance ? `STYLE & INTENT GUIDANCE:\n${responseStyleGuidance}\n` : ''}
 ${retrievedData ? `RETRIEVED APPLICATION DATA (Real Stored Records):\n${JSON.stringify(retrievedData, null, 2)}\n` : ''}

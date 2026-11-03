@@ -44,6 +44,11 @@ async function runTestSuite() {
   assert(classifyIntent('what did I eat yesterday?') === INTENT_TYPES.DIET_QUERY, 'Classifies diet question as DIET_QUERY');
   assert(classifyIntent('summarize my workouts this month') === INTENT_TYPES.WORKOUTS_QUERY, 'Classifies workout query as WORKOUTS_QUERY');
   assert(classifyIntent('plan tomorrow') === INTENT_TYPES.PLANNING, 'Classifies "plan tomorrow" as PLANNING');
+  assert(classifyIntent('how much water did I drink today?') === INTENT_TYPES.WELLNESS_QUERY, 'Classifies hydration question as WELLNESS_QUERY');
+  assert(classifyIntent('how did I sleep last night?') === INTENT_TYPES.WELLNESS_QUERY, 'Classifies sleep inquiry as WELLNESS_QUERY');
+  assert(classifyIntent('what routines do I have scheduled?') === INTENT_TYPES.ROUTINES_QUERY, 'Classifies routine query as ROUTINES_QUERY');
+  assert(classifyIntent('what should I work on today?') === INTENT_TYPES.CROSS_MODULE_SYNTHESIS, 'Classifies daily focus question as CROSS_MODULE_SYNTHESIS');
+  assert(classifyIntent('find code review task') === INTENT_TYPES.SEARCH_QUERY, 'Classifies search inquiry as SEARCH_QUERY');
 
   // --- 2. SELECTIVE DATA ORCHESTRATION ---
   console.log('\n--- 2. SELECTIVE DATA ORCHESTRATION ---');
@@ -94,13 +99,40 @@ async function runTestSuite() {
 
   // --- 3. APPLICATION TOOLS DIRECT QUERY ---
   console.log('\n--- 3. APPLICATION TOOLS DIRECT QUERY ---');
-  const tools = new ApplicationTools(mockContext);
+  const enrichedMockContext = {
+    ...mockContext,
+    routines: [
+      { id: 'r1', title: 'Morning Protocol', enabled: true, completedToday: true }
+    ],
+    wellness: {
+      hydration: { glassesLogged: 5, goalGlasses: 8 },
+      sleep: { hours: 7.5, quality: 'Good' },
+      walking: { steps: 8500, distanceKm: 6.2 }
+    }
+  };
+  const tools = new ApplicationTools(enrichedMockContext);
   const pending = tools.getPendingTasks({ date: '2026-11-03' });
   assert(pending.count === 1, 'Tools getPendingTasks returns exact pending count');
   assert(pending.tasks[0].title === 'Code review', 'Tools getPendingTasks returns exact task title');
 
   const habitStreaks = tools.getHabitStreaks();
   assert(habitStreaks.length === 1 && habitStreaks[0].streak === 4, 'Tools getHabitStreaks returns sorted streaks');
+
+  const searchRes = tools.searchApplicationData({ query: 'code review' });
+  assert(searchRes.totalMatches >= 1, 'Tools searchApplicationData finds matching tasks by keyword');
+  assert(searchRes.matches[0].title === 'Code review', 'Search result matches task title');
+
+  const routineStats = tools.getRoutineStats();
+  assert(routineStats.totalProtocols === 1 && routineStats.completedTodayCount === 1, 'Tools getRoutineStats calculates routine adherence');
+
+  const hydration = tools.getHydrationStats({ date: '2026-11-03' });
+  assert(hydration.glassesLogged === 5 && hydration.goalGlasses === 8, 'Tools getHydrationStats returns accurate hydration tracking');
+
+  const dailySnap = tools.getDailySnapshot({ date: '2026-11-03' });
+  assert(dailySnap.pendingTasksCount === 1 && dailySnap.hydrationGlasses === 5, 'Tools getDailySnapshot unifies tasks and wellness');
+
+  const priorities = tools.getTodayPriorities({ date: '2026-11-03' });
+  assert(priorities.priorities.length > 0, 'Tools getTodayPriorities synthesizes actionable recommendations');
 
   // --- 4. MODEL NORMALIZATION & RESOLUTION ---
   console.log('\n--- 4. MODEL NORMALIZATION & RESOLUTION ---');

@@ -164,16 +164,70 @@ export function prepareNutritionContext(state, daysWindow = 7) {
 export function prepareRoutinesContext(state) {
   const routines = state.routines || [];
   const todayStr = format(new Date(), 'yyyy-MM-dd');
-  const routineLogs = state.routineLogs || {};
-  const todayLogs = routineLogs[todayStr] || {};
+  const todayTasks = state.tasks?.[todayStr] || [];
 
-  return routines.map(r => ({
-    id: r.id,
-    title: r.title,
-    type: r.type || 'morning',
-    stepsCount: (r.steps || []).length,
-    completedToday: Boolean(todayLogs[r.id])
-  }));
+  return routines.map(r => {
+    const routineTask = todayTasks.find(t => t.isRoutine && t.routineId === r.id);
+    return {
+      id: r.id,
+      title: r.title,
+      category: r.category || 'General',
+      priority: r.priority || 'Medium',
+      enabled: r.enabled !== false,
+      completedToday: Boolean(routineTask?.completed)
+    };
+  });
+}
+
+export function prepareWellnessContext(state) {
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+
+  // Hydration
+  const waterLogs = state.waterLogs || {};
+  const waterCompletions = state.waterCompletions || {};
+  const waterSchedule = state.waterSchedule || [];
+  const waterGlasses = waterLogs[todayStr] || 0;
+  const scheduleDone = Object.keys(waterCompletions[todayStr] || {}).length;
+  const waterGoal = state.waterGoal || 8;
+
+  // Sleep (check today or last night)
+  const sleepLogs = state.sleepLogs || {};
+  const sleepToday = sleepLogs[todayStr] || sleepLogs[yesterdayStr] || null;
+
+  // Mood & Energy
+  const moodLogs = state.moodLogs || {};
+  const energyLogs = state.energyLogs || {};
+  const todayMood = moodLogs[todayStr] || null;
+  const todayEnergy = energyLogs[todayStr] || {};
+
+  // Walking & Steps
+  const walkingLogs = state.walkingLogs || {};
+  const dayWalking = Array.isArray(walkingLogs[todayStr]) 
+    ? walkingLogs[todayStr] 
+    : (walkingLogs[todayStr] ? [walkingLogs[todayStr]] : []);
+  const totalSteps = dayWalking.reduce((acc, l) => acc + (Number(l.steps) || 0), 0);
+  const totalKm = dayWalking.reduce((acc, l) => acc + (Number(l.distanceKm) || 0), 0);
+
+  return {
+    hydration: {
+      glassesLogged: waterGlasses,
+      scheduleCompleted: scheduleDone,
+      scheduleTotal: waterSchedule.length || 5,
+      goalGlasses: waterGoal
+    },
+    sleep: sleepToday ? {
+      hours: sleepToday.hours,
+      quality: sleepToday.quality,
+      deepSleepHours: sleepToday.deepSleepHours
+    } : null,
+    mood: todayMood ? todayMood.mood : null,
+    energyLevelsCount: Object.keys(todayEnergy).length,
+    walking: {
+      steps: totalSteps,
+      distanceKm: Math.round(totalKm * 10) / 10
+    }
+  };
 }
 
 /**
@@ -185,14 +239,18 @@ export function prepareFullContext(state) {
     includeTasks: true,
     includeHabits: true,
     includeWorkouts: true,
-    includeNutrition: true
+    includeNutrition: true,
+    includeWellness: true
   };
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const context = {
     today: todayStr,
     userLevel: state.gamification?.level || 1,
-    rank: state.gamification?.rank || 'Recruit'
+    rank: state.gamification?.rank || 'Recruit',
+    xp: state.gamification?.xp || 0,
+    dailyStreak: state.gamification?.streak || 0,
+    dailyFocus: state.dailyFocus?.[todayStr] || null
   };
 
   if (privacy.includeTasks !== false) {
@@ -206,6 +264,7 @@ export function prepareFullContext(state) {
       dueTime: t.dueTime || null
     }));
     context.todayTasks = todayTasks;
+    context.tasks = state.tasks || {};
   }
 
   if (privacy.includeHabits !== false) {
@@ -225,6 +284,11 @@ export function prepareFullContext(state) {
     context.routines = prepareRoutinesContext(state);
   }
 
+  // Include wellness metrics
+  if (privacy.includeWellness !== false) {
+    context.wellness = prepareWellnessContext(state);
+  }
+
   return context;
 }
 
@@ -237,11 +301,13 @@ export function getContextBadges(state) {
   const activeHabits = (state.habits || []).filter(h => !h.archived);
   const workoutsCount = Object.keys(state.workouts || {}).length;
   const dietCount = (state.dietEntries?.[todayStr] || []).length;
+  const hasWellness = (state.waterLogs?.[todayStr] || 0) > 0 || !!state.sleepLogs?.[todayStr];
 
   return [
     { label: `Tasks (${todayTasks.length})`, active: todayTasks.length > 0, type: 'tasks' },
     { label: `Habits (${activeHabits.length})`, active: activeHabits.length > 0, type: 'habits' },
     { label: `Workouts (${workoutsCount})`, active: workoutsCount > 0, type: 'workouts' },
-    { label: `Diet (${dietCount})`, active: dietCount > 0, type: 'diet' }
+    { label: `Diet (${dietCount})`, active: dietCount > 0, type: 'diet' },
+    { label: 'Wellness', active: hasWellness, type: 'wellness' }
   ];
 }

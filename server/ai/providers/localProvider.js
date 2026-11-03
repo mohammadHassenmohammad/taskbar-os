@@ -133,6 +133,50 @@ ${sessions > 0 ? `Consistent resistance training stimulates neuroplasticity and 
 
 *Nutrition note: Aim for consistent hydration throughout deep work blocks to prevent midday cognitive fatigue.*`;
     }
+    // 9B. Wellness, Hydration & Sleep
+    else if (lower.includes('water') || lower.includes('hydrat') || lower.includes('sleep') || lower.includes('steps') || lower.includes('walking')) {
+      const wellness = context.wellness || {};
+      const hyd = wellness.hydration || {};
+      const sleep = wellness.sleep;
+      const walk = wellness.walking || {};
+
+      responseText = `### 💧 Health & Recovery Status
+- **Hydration:** ${hyd.glassesLogged || 0} / ${hyd.goalGlasses || 8} glasses logged today
+- **Sleep Quality:** ${sleep ? `${sleep.hours || 0} hours (${sleep.quality || 'Good'})` : 'No sleep logged for last night'}
+- **Walking / Steps:** ${walk.steps ? `${walk.steps.toLocaleString()} steps (~${walk.distanceKm || 0} km)` : 'No steps recorded today'}
+
+*Recovery Tip: Adequate sleep and hydration form the biological baseline for uninterrupted focus and training output.*`;
+    }
+    // 9C. Routines & Morning Protocols
+    else if (lower.includes('routine') || lower.includes('protocol')) {
+      const routines = context.routines || [];
+      const completed = routines.filter(r => r.completedToday).length;
+
+      responseText = `### ⚡ Active Protocols & Routines
+- **Active Protocols:** ${routines.length}
+- **Completed Today:** ${completed} / ${routines.length}
+
+${routines.map(r => `- **${r.title}**: ${r.completedToday ? '✅ Completed' : '⏳ Pending'}`).join('\n') || '- *No routine protocols currently defined.*'}
+
+*Discipline note: Morning routines anchor cognitive momentum before reactive tasks pull your attention.*`;
+    }
+    // 9D. Search & Find
+    else if (lower.match(/^(find|search for|look for|where is|search)\b/i)) {
+      const q = lower.replace(/^(find|search for|look for|where is|search)\s+/i, '').trim();
+      const allTasks = context.tasks || {};
+      const matches = [];
+      Object.entries(allTasks).forEach(([dStr, list]) => {
+        if (Array.isArray(list)) {
+          list.forEach(t => {
+            if (t.title && t.title.toLowerCase().includes(q)) matches.push(`- **${t.title}** (${dStr})`);
+          });
+        }
+      });
+
+      responseText = matches.length > 0
+        ? `Found ${matches.length} record${matches.length === 1 ? '' : 's'} matching "${q}":\n\n${matches.slice(0, 5).join('\n')}`
+        : `No matching records found for "${q}".`;
+    }
     // 10. Prioritization & Planning
     else if (lower.includes('priorit') || lower.includes('today') || lower.includes('plan') || lower.includes('schedule') || lower.includes('what should i do')) {
       const todayTasks = context.todayTasks || [];
@@ -148,11 +192,9 @@ ${pending.length > 0 ? `*You have ${pending.length} pending task${pending.length
     }
     // 11. Conversational Fallback
     else {
-      responseText = `I understand you're asking about: "${lastUserMsg}".
+      responseText = `I'm tracking your inquiry regarding "${lastUserMsg}".
 
-As your TaskBar OS Companion, I can analyze your metrics, suggest priorities, breakdown large goals, or help you structure your schedule. 
-
-What area of your productivity or routine would you like to review next?`;
+How would you like to proceed? We can review your schedule, analyze your habits and training, or dive straight into a focused work block.`;
     }
 
     return {
