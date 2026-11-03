@@ -11,7 +11,7 @@ import {
   Utensils, Plus, Search, Trash2, RotateCcw, Heart, Flame, 
   ChevronLeft, ChevronRight, Calendar, Sparkles, 
   BookOpen, PieChart as PieIcon, Sliders, Check, Info, AlertTriangle, User, Zap,
-  Footprints, X
+  Footprints, X, Edit2, Bookmark
 } from 'lucide-react';
 import { format, subDays, addDays, parseISO } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -40,8 +40,8 @@ export default function Diet() {
   const { 
     dietEntries, customFoods, favoriteFoods, dietGoals,
     dietActiveDate, setDietActiveDate, addDietEntry, deleteDietEntry,
-    addCustomFood, toggleFavoriteFood,
-    updateDietGoals,
+    updateDietEntry, addCustomFood, toggleFavoriteFood,
+    updateDietGoals, savedMeals = [], saveMealTemplate, deleteMealTemplate,
     walkingLogs, logWalkingActivity, deleteWalkingLog, workouts
   } = useStore();
 
@@ -67,6 +67,11 @@ export default function Diet() {
   const [quantityInput, setQuantityInput] = useState('100');
   const [selectedUnit, setSelectedUnit] = useState('g');
   const [selectedMeal, setSelectedMeal] = useState('Lunch');
+
+  // Edit Entry state
+  const [editingEntry, setEditingEntry] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({ quantity: '100', unit: 'g', meal: 'Lunch' });
 
   // Custom Food state
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -682,15 +687,44 @@ export default function Diet() {
 
                   return (
                     <div key={mealType} style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-md)', padding: 16, border: '1px solid var(--border-subtle)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid var(--border-subtle)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>{mealType}</span>
                           <span className="badge" style={{ fontSize: 10, background: 'rgba(99,102,241,0.1)', color: 'var(--accent-primary)' }}>
                             {mealEntries.length} {mealEntries.length === 1 ? 'item' : 'items'}
                           </span>
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
-                          {mealSum.calories} kcal · <span style={{ color: MACRO_COLORS.protein }}>P: {mealSum.protein}g</span> · <span style={{ color: MACRO_COLORS.carbs }}>C: {mealSum.carbs}g</span> · <span style={{ color: MACRO_COLORS.fat }}>F: {mealSum.fat}g</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                            {mealSum.calories} kcal · <span style={{ color: MACRO_COLORS.protein }}>P: {mealSum.protein}g</span> · <span style={{ color: MACRO_COLORS.carbs }}>C: {mealSum.carbs}g</span> · <span style={{ color: MACRO_COLORS.fat }}>F: {mealSum.fat}g</span>
+                          </div>
+                          <button
+                            className="btn btn-ghost btn-xs"
+                            title="Save this meal as a template"
+                            onClick={() => {
+                              saveMealTemplate({
+                                name: `${mealType} (${format(parsedDate, 'MMM d')})`,
+                                items: mealEntries.map(e => ({
+                                  food: allFoods.find(f => f.id === e.foodId) || {
+                                    id: e.foodId, name: e.foodName, category: e.category,
+                                    servingSize: e.quantity, servingUnit: e.unit,
+                                    calories: e.calculatedNutrients.calories,
+                                    protein: e.calculatedNutrients.protein,
+                                    carbs: e.calculatedNutrients.carbs,
+                                    fat: e.calculatedNutrients.fat,
+                                    rawOrCooked: e.rawOrCooked
+                                  },
+                                  quantity: e.quantity,
+                                  unit: e.unit,
+                                  meal: e.meal
+                                }))
+                              });
+                            }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: 11, color: 'var(--text-secondary)' }}
+                          >
+                            <Bookmark size={12} />
+                            <span>Save Template</span>
+                          </button>
                         </div>
                       </div>
 
@@ -733,6 +767,21 @@ export default function Diet() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                               <button 
                                 className="btn btn-ghost btn-icon btn-sm" 
+                                onClick={() => {
+                                  setEditingEntry(entry);
+                                  setEditForm({
+                                    quantity: String(entry.quantity),
+                                    unit: entry.unit || 'g',
+                                    meal: entry.meal || 'Lunch'
+                                  });
+                                  setShowEditModal(true);
+                                }}
+                                title="Edit Entry"
+                              >
+                                <Edit2 size={14} color="var(--text-secondary)" />
+                              </button>
+                              <button 
+                                className="btn btn-ghost btn-icon btn-sm" 
                                 onClick={() => handleAddAgain(entry)} 
                                 title="Add Again Today"
                               >
@@ -749,6 +798,100 @@ export default function Diet() {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Saved Meal Templates Panel */}
+          <div className="card" style={{ padding: 20, background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h4 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+                  Saved Meal Templates
+                </h4>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                  Reusable meal combinations for fast, reliable logging
+                </p>
+              </div>
+              <span className="badge" style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--accent-primary)', fontSize: 11, fontWeight: 700 }}>
+                {(savedMeals || []).length} Saved
+              </span>
+            </div>
+
+            {(savedMeals || []).length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '28px 20px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', border: '1px dashed var(--border-subtle)' }}>
+                <Bookmark size={24} style={{ opacity: 0.4, marginBottom: 8, display: 'block', margin: '0 auto 8px' }} />
+                No meal templates saved yet. Head to your Daily Timeline and click "Save Template" on any meal category!
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+                {savedMeals.map(template => {
+                  const totalCalories = (template.items || []).reduce((sum, it) => {
+                    const cal = it.food?.calories || 0;
+                    const ratio = (it.food?.servingSize && it.food.servingSize > 0) ? (Number(it.quantity) || 0) / it.food.servingSize : 1;
+                    return sum + Math.round(cal * ratio);
+                  }, 0);
+                  const totalProtein = (template.items || []).reduce((sum, it) => {
+                    const prot = it.food?.protein || 0;
+                    const ratio = (it.food?.servingSize && it.food.servingSize > 0) ? (Number(it.quantity) || 0) / it.food.servingSize : 1;
+                    return sum + Math.round(prot * ratio);
+                  }, 0);
+
+                  return (
+                    <div key={template.id} style={{ padding: 14, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{template.name}</span>
+                          <button
+                            className="btn btn-ghost btn-xs text-danger"
+                            title="Delete template"
+                            onClick={() => deleteMealTemplate(template.id)}
+                            style={{ padding: 2 }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                          {totalCalories} kcal · {totalProtein}g protein · {(template.items || []).length} items
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+                          {(template.items || []).slice(0, 4).map((it, idx) => (
+                            <div key={idx} style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
+                                • {it.food?.name || 'Food item'}
+                              </span>
+                              <span style={{ color: 'var(--text-muted)' }}>{it.quantity}{it.unit || 'g'}</span>
+                            </div>
+                          ))}
+                          {(template.items || []).length > 4 && (
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                              +{(template.items || []).length - 4} more items
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700 }}
+                        onClick={() => {
+                          (template.items || []).forEach(it => {
+                            addDietEntry({
+                              food: it.food,
+                              quantity: it.quantity,
+                              unit: it.unit,
+                              meal: it.meal || 'Lunch'
+                            }, activeDate);
+                          });
+                          toast.success(`Logged "${template.name}" to ${activeDate}!`, { icon: '🍱' });
+                          setActiveTab('tracker');
+                        }}
+                      >
+                        <Plus size={14} />
+                        <span>Log to {format(parsedDate, 'MMM d')}</span>
+                      </button>
                     </div>
                   );
                 })}
@@ -1062,6 +1205,100 @@ export default function Diet() {
               </div>
             </div>
 
+          </div>
+
+          {/* Saved Meal Templates Panel */}
+          <div className="card" style={{ padding: 20, background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h4 style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+                  Saved Meal Templates
+                </h4>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                  Reusable meal combinations for fast, reliable logging
+                </p>
+              </div>
+              <span className="badge" style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--accent-primary)', fontSize: 11, fontWeight: 700 }}>
+                {(savedMeals || []).length} Saved
+              </span>
+            </div>
+
+            {(savedMeals || []).length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '28px 20px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', border: '1px dashed var(--border-subtle)' }}>
+                <Bookmark size={24} style={{ opacity: 0.4, marginBottom: 8, display: 'block', margin: '0 auto 8px' }} />
+                No meal templates saved yet. Head to your Daily Timeline and click "Save Template" on any meal category!
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+                {savedMeals.map(template => {
+                  const totalCalories = (template.items || []).reduce((sum, it) => {
+                    const cal = it.food?.calories || 0;
+                    const ratio = (it.food?.servingSize && it.food.servingSize > 0) ? (Number(it.quantity) || 0) / it.food.servingSize : 1;
+                    return sum + Math.round(cal * ratio);
+                  }, 0);
+                  const totalProtein = (template.items || []).reduce((sum, it) => {
+                    const prot = it.food?.protein || 0;
+                    const ratio = (it.food?.servingSize && it.food.servingSize > 0) ? (Number(it.quantity) || 0) / it.food.servingSize : 1;
+                    return sum + Math.round(prot * ratio);
+                  }, 0);
+
+                  return (
+                    <div key={template.id} style={{ padding: 14, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{template.name}</span>
+                          <button
+                            className="btn btn-ghost btn-xs text-danger"
+                            title="Delete template"
+                            onClick={() => deleteMealTemplate(template.id)}
+                            style={{ padding: 2 }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                          {totalCalories} kcal · {totalProtein}g protein · {(template.items || []).length} items
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+                          {(template.items || []).slice(0, 4).map((it, idx) => (
+                            <div key={idx} style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
+                                • {it.food?.name || 'Food item'}
+                              </span>
+                              <span style={{ color: 'var(--text-muted)' }}>{it.quantity}{it.unit || 'g'}</span>
+                            </div>
+                          ))}
+                          {(template.items || []).length > 4 && (
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                              +{(template.items || []).length - 4} more items
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700 }}
+                        onClick={() => {
+                          (template.items || []).forEach(it => {
+                            addDietEntry({
+                              food: it.food,
+                              quantity: it.quantity,
+                              unit: it.unit,
+                              meal: it.meal || 'Lunch'
+                            }, activeDate);
+                          });
+                          toast.success(`Logged "${template.name}" to ${activeDate}!`, { icon: '🍱' });
+                          setActiveTab('tracker');
+                        }}
+                      >
+                        <Plus size={14} />
+                        <span>Log to {format(parsedDate, 'MMM d')}</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </motion.div>
       )}
@@ -1516,6 +1753,90 @@ export default function Diet() {
           </div>
         </div>
       )}
+
+      {/* ── EDIT DIET ENTRY MODAL ── */}
+      <AnimatePresence>
+        {showEditModal && editingEntry && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9 }}
+              style={{ background: 'var(--bg-card)', borderRadius: 24, padding: 24, maxWidth: 440, width: '100%', border: '1px solid var(--border-subtle)', boxShadow: '0 30px 60px rgba(0,0,0,0.5)' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>Edit Food Entry</h3>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{editingEntry.foodName}</div>
+                </div>
+                <button onClick={() => setShowEditModal(false)} className="btn btn-ghost btn-icon btn-sm"><X size={18}/></button>
+              </div>
+
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const q = parseFloat(editForm.quantity);
+                if (!q || q <= 0) {
+                  toast.error('Please enter a valid quantity');
+                  return;
+                }
+                updateDietEntry(editingEntry.id, activeDate, {
+                  quantity: q,
+                  unit: editForm.unit,
+                  meal: editForm.meal
+                });
+                setShowEditModal(false);
+                setEditingEntry(null);
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div className="form-group">
+                    <label className="form-label">Meal Category</label>
+                    <select
+                      className="form-select"
+                      value={editForm.meal}
+                      onChange={e => setEditForm({ ...editForm, meal: e.target.value })}
+                    >
+                      {MEAL_TYPES.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="grid-2" style={{ gap: 12 }}>
+                    <div className="form-group">
+                      <label className="form-label">Quantity</label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0.1"
+                        className="form-input"
+                        value={editForm.quantity}
+                        onChange={e => setEditForm({ ...editForm, quantity: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Unit</label>
+                      <select
+                        className="form-select"
+                        value={editForm.unit}
+                        onChange={e => setEditForm({ ...editForm, unit: e.target.value })}
+                      >
+                        {Object.entries(UNIT_LABEL_MAP).map(([k, label]) => (
+                          <option key={k} value={k}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                  <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowEditModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" style={{ flex: 2 }}>Save Changes</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── WALKING & ACTIVITY LOG MODAL ── */}
       <AnimatePresence>

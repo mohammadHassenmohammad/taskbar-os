@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useStore, NOTIFICATION_SOUNDS } from '../store/useStore'; // Sync Heartbeat: 1778478600
 import { playNotificationSound } from '../lib/audio';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Save, Download, Upload, Trash2, Moon, Sun, Bell, Timer, 
+  Save, Download, Upload, Moon, Sun, Bell, Timer, 
   Volume2, Zap, Shield, User, Globe, Coffee, Monitor, 
-  CheckCircle, Cloud, RefreshCw, Smartphone, Mail, Lock, Target, Key, Play, Database, Plus, Minus
+  Cloud, RefreshCw, Mail, Lock, Target, Key, Play, Database, Plus, Minus,
+  FileText, AlertTriangle, X, Check
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -53,14 +54,12 @@ export default function Settings() {
     user, updateUserPassword, exportData, importData 
   } = useStore();
   const [activeTab, setActiveTab] = useState('general');
-  const [localSettings, setLocalSettings] = useState({ ...settings });
+  const [localSettings, setLocalSettings] = useState(() => ({ ...settings }));
   const [newPassword, setNewPassword] = useState('');
   const [isChangingPass, setIsChangingPass] = useState(false);
-
-  // Sync local state when global settings change
-  useEffect(() => {
-    setLocalSettings({ ...settings });
-  }, [settings]);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importPreview, setImportPreview] = useState(null);
+  const [createPreBackup, setCreatePreBackup] = useState(true);
 
   const handleSave = () => {
     updateSettings(localSettings);
@@ -82,11 +81,49 @@ export default function Settings() {
   };
 
   const handleImport = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
-      importData(event.target.result);
+      try {
+        const raw = event.target.result;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+          toast.error('Invalid backup file format');
+          return;
+        }
+        let tasksCount = 0;
+        if (parsed.tasks && typeof parsed.tasks === 'object') {
+          Object.values(parsed.tasks).forEach(list => {
+            if (Array.isArray(list)) tasksCount += list.length;
+          });
+        }
+        const habitsCount = Array.isArray(parsed.habits) ? parsed.habits.length : 0;
+        const workoutsCount = parsed.workouts && typeof parsed.workouts === 'object' ? Object.keys(parsed.workouts).length : 0;
+        let dietCount = 0;
+        if (parsed.dietEntries && typeof parsed.dietEntries === 'object') {
+          Object.values(parsed.dietEntries).forEach(list => {
+            if (Array.isArray(list)) dietCount += list.length;
+          });
+        }
+        const xpTotal = parsed.gamification?.totalXp || 0;
+
+        setImportPreview({
+          fileName: file.name,
+          rawText: raw,
+          tasksCount,
+          habitsCount,
+          workoutsCount,
+          dietCount,
+          xpTotal,
+          exportDate: parsed.exportDate || 'Unknown'
+        });
+        setShowImportModal(true);
+      } catch (err) {
+        toast.error('Failed to parse backup JSON: ' + err.message);
+      } finally {
+        e.target.value = '';
+      }
     };
     reader.readAsText(file);
   };
@@ -111,43 +148,26 @@ export default function Settings() {
     { id: 'account', label: 'Security & Data', icon: Shield },
   ];
 
-  const [profileForm, setProfileForm] = useState({
-    username: '',
-    fullName: '',
-    age: '',
-    gender: '',
-    bio: '',
-    weight: '',
-    height: '',
-    fitnessGoal: '',
-    productivityStyle: '',
-    waterGoal: ''
-  });
+  const [profileForm, setProfileForm] = useState(() => ({
+    username: user?.username || '',
+    fullName: user?.fullName || user?.name || '',
+    age: user?.age || '',
+    gender: user?.gender || 'Other',
+    bio: user?.bio || '',
+    weight: user?.weight || '',
+    height: user?.height || '',
+    fitnessGoal: user?.fitnessGoal || 'General Health',
+    productivityStyle: user?.productivityStyle || 'Deep Work',
+    waterGoal: user?.waterGoal || '2.5'
+  }));
 
   const { updateProfile } = useStore();
-
-  useEffect(() => {
-    if (user) {
-      setProfileForm({
-        username: user.username || '',
-        fullName: user.fullName || user.name || '',
-        age: user.age || '',
-        gender: user.gender || 'Other',
-        bio: user.bio || '',
-        weight: user.weight || '',
-        height: user.height || '',
-        fitnessGoal: user.fitnessGoal || 'General Health',
-        productivityStyle: user.productivityStyle || 'Deep Work',
-        waterGoal: user.waterGoal || '2.5'
-      });
-    }
-  }, [user]);
 
   const handleProfileSave = async () => {
     try {
       await updateProfile(profileForm);
       toast.success('Profile Intelligence Synchronized! ⚡');
-    } catch (err) {
+    } catch {
       toast.error('Failed to update profile.');
     }
   };
@@ -494,13 +514,19 @@ export default function Settings() {
                 <div style={{ padding: 24, background: 'var(--bg-elevated)', borderRadius: 20, border: '1.5px solid var(--border-subtle)' }}>
                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
                       <Database size={18} color="var(--accent-primary)" />
-                      <span style={{ fontSize: 15, fontWeight: 800 }}>Intelligence Sovereignty</span>
+                      <div>
+                        <span style={{ fontSize: 15, fontWeight: 800 }}>Intelligence Sovereignty</span>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Export portable backups or restore verified mission archives</div>
+                      </div>
                    </div>
-                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                      <button className="btn btn-ghost" style={{ flex: 1, minWidth: 140 }} onClick={exportData}>
-                         <Download size={14} /> Export Intelligence
+                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <button className="btn btn-ghost btn-sm" style={{ flex: 1, minWidth: 140 }} onClick={() => exportData('json')}>
+                         <Download size={14} /> Export JSON
                       </button>
-                      <label className="btn btn-ghost" style={{ flex: 1, minWidth: 140, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      <button className="btn btn-ghost btn-sm" style={{ flex: 1, minWidth: 140 }} onClick={() => exportData('csv')}>
+                         <FileText size={14} /> Export Tasks CSV
+                      </button>
+                      <label className="btn btn-primary btn-sm" style={{ flex: 1, minWidth: 140, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                          <Upload size={14} /> Import Backup
                          <input type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
                       </label>
@@ -515,6 +541,117 @@ export default function Settings() {
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* CONFIRM INTELLIGENCE RESTORE MODAL */}
+      <AnimatePresence>
+        {showImportModal && importPreview && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.8)',
+              backdropFilter: 'blur(8px)',
+              zIndex: 99999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9 }}
+              style={{
+                background: 'var(--bg-card)',
+                borderRadius: 24,
+                padding: 26,
+                maxWidth: 480,
+                width: '100%',
+                border: '1.5px solid var(--border-subtle)',
+                boxShadow: '0 30px 60px rgba(0,0,0,0.6)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-primary)' }}>
+                    <Database size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>Restore Intelligence Archive</h3>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{importPreview.fileName}</div>
+                  </div>
+                </div>
+                <button onClick={() => setShowImportModal(false)} className="btn btn-ghost btn-icon btn-sm"><X size={16} /></button>
+              </div>
+
+              {/* Archive Metrics Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+                <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Tasks to Restore</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)' }}>{importPreview.tasksCount}</div>
+                </div>
+                <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Habits to Restore</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--accent-primary)' }}>{importPreview.habitsCount}</div>
+                </div>
+                <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Workouts Logged</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#f59e0b' }}>{importPreview.workoutsCount}</div>
+                </div>
+                <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>Diet Records</div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#10b981' }}>{importPreview.dietCount}</div>
+                </div>
+              </div>
+
+              {/* Pre-restore backup safeguard */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'rgba(99,102,241,0.06)', borderRadius: 12, border: '1px solid rgba(99,102,241,0.2)', marginBottom: 20, cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  checked={createPreBackup} 
+                  onChange={e => setCreatePreBackup(e.target.checked)} 
+                  style={{ accentColor: 'var(--accent-primary)', width: 16, height: 16 }}
+                />
+                <span style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 600 }}>
+                  Automatically download safety backup of current state before replacing
+                </span>
+              </label>
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button 
+                  type="button" 
+                  className="btn btn-ghost" 
+                  style={{ flex: 1 }} 
+                  onClick={() => setShowImportModal(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-primary" 
+                  style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 800 }}
+                  onClick={() => {
+                    if (createPreBackup) {
+                      exportData('json');
+                    }
+                    importData(importPreview.rawText);
+                    setShowImportModal(false);
+                    setImportPreview(null);
+                  }}
+                >
+                  <Check size={16} />
+                  <span>Confirm & Restore</span>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

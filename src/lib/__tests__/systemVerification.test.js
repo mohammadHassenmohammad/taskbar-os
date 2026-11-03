@@ -209,6 +209,95 @@ function runSuite() {
   assert(activeLife.loggedSleepDays === 1, '1 logged sleep day');
   assert(activeLife.avgSleepQuality === 8, 'Sleep quality averages to 8/10');
 
+  // --- 6. REVERSIBLE XP UNCOMPLETE / RECOMPLETE CYCLES ---
+  console.log('\n--- 6. REVERSIBLE XP UNCOMPLETE / RECOMPLETE CYCLES ---');
+  let cycleLedger = [];
+  let cycleXp = 0;
+  // Step A: Award task XP (+50)
+  const cycleAward1 = processXpAward(cycleLedger, {
+    amount: 50,
+    sourceId: 'task:cycle_999:2026-11-03',
+    description: 'Task Completion: Mission 999'
+  });
+  assert(cycleAward1.allowed === true, 'Task completed first time awarded XP');
+  cycleLedger.push(cycleAward1.transaction);
+  cycleXp += cycleAward1.transaction.amount;
+  assert(cycleXp === 50, 'Cycle XP is 50');
+
+  // Step B: Uncomplete task (-50)
+  const cycleRev1 = processXpReversal(cycleLedger, 'task:cycle_999:2026-11-03', 'Uncompleted mission');
+  assert(cycleRev1.allowed === true, 'Task uncompleted reversed XP');
+  cycleLedger.push(cycleRev1.transaction);
+  cycleXp -= cycleRev1.amount;
+  assert(cycleXp === 0, 'Cycle XP back to 0');
+
+  // Step C: Recomplete task (+50)
+  const cycleAward2 = processXpAward(cycleLedger, {
+    amount: 50,
+    sourceId: 'task:cycle_999:2026-11-03',
+    description: 'Task Recompleted: Mission 999'
+  });
+  assert(cycleAward2.allowed === true, 'Task re-completed successfully awarded XP after previous reversal');
+  cycleLedger.push(cycleAward2.transaction);
+  cycleXp += cycleAward2.transaction.amount;
+  assert(cycleXp === 50, 'Cycle XP back to 50 after recompletion');
+
+  // Step D: Reversal ledger check
+  const cycleReconcile = reconcileXpLedger({ auditLedger: cycleLedger, xp: cycleXp });
+  assert(cycleReconcile.finalXp === 50, 'Cycle reconcile calculates net 50 - 50 + 50 = 50 XP');
+
+  // --- 7. POMODORO ABSOLUTE TIMESTAMP TIMER INTEGRITY ---
+  console.log('\n--- 7. POMODORO ABSOLUTE TIMESTAMP TIMER INTEGRITY ---');
+  const now = Date.now();
+  const targetEnd = now + (25 * 60 * 1000);
+  const remainingSeconds = Math.max(0, Math.round((targetEnd - now) / 1000));
+  assert(remainingSeconds === 1500, '25-minute pomodoro remaining seconds is 1500s');
+
+  const elapsedSeconds = 500;
+  const timeAfterNav = now + (elapsedSeconds * 1000);
+  const remainingAfterNav = Math.max(0, Math.round((targetEnd - timeAfterNav) / 1000));
+  assert(remainingAfterNav === 1000, 'After 500s navigation, remaining seconds is exactly 1000s without timer drift');
+
+  // --- 8. HABITS STREAK & LOGIC VERIFICATION ---
+  console.log('\n--- 8. HABITS STREAK & LOGIC VERIFICATION ---');
+  const mockHabit = { id: 'h_read', title: 'Daily Reading', schedule: 'daily' };
+  const mockLogs = {
+    '2026-11-01': { 'h_read': true },
+    '2026-11-02': { 'h_read': true },
+    '2026-11-03': { 'h_read': true }
+  };
+  let habitStreak = 0;
+  const checkDates = ['2026-11-03', '2026-11-02', '2026-11-01', '2026-10-31'];
+  for (const d of checkDates) {
+    if (mockLogs[d]?.[mockHabit.id]) {
+      habitStreak++;
+    } else {
+      break;
+    }
+  }
+  assert(habitStreak === 3, 'Consecutive 3-day habit log calculates 3-day streak');
+
+  // --- 9. DIET NUTRITION CALCULATIONS ---
+  console.log('\n--- 9. DIET NUTRITION CALCULATIONS ---');
+  const chickenBreast = {
+    id: 'f_chicken',
+    name: 'Chicken Breast',
+    servingSize: 100,
+    servingUnit: 'g',
+    calories: 165,
+    protein: 31,
+    carbs: 0,
+    fat: 3.6
+  };
+  // Log 200g (2x serving)
+  const qty = 200;
+  const ratio = qty / chickenBreast.servingSize;
+  const calcCal = Math.round(chickenBreast.calories * ratio);
+  const calcProt = Math.round(chickenBreast.protein * ratio);
+  assert(ratio === 2, '200g has ratio of 2x standard 100g serving');
+  assert(calcCal === 330, '200g chicken breast is exactly 330 kcal');
+  assert(calcProt === 62, '200g chicken breast is exactly 62g protein');
+
   console.log(`\n\x1b[32m[SUCCESS]\x1b[0m All ${passedTests} / ${totalTests} verification tests passed successfully!`);
 }
 

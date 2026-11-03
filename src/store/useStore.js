@@ -2,13 +2,12 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { v4 as uuidv4 } from 'uuid';
-import { format, differenceInDays, addDays, subDays, parseISO } from 'date-fns';
+import { format, differenceInDays, parseISO } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut, 
-  onAuthStateChanged,
   sendPasswordResetEmail,
   updatePassword
 } from "firebase/auth";
@@ -16,14 +15,42 @@ import {
   doc, 
   setDoc, 
   getDoc, 
-  onSnapshot,
   updateDoc
 } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import { playNotificationSound } from "../lib/audio";
 import { NotificationService } from "../lib/notifications";
+import { calculateEntryNutrients } from "../lib/nutritionEngine";
+import { 
+  getDailySnapshot, 
+  getTodayPriorities, 
+  getNextAction, 
+  generateCrossModuleInsights, 
+  getGlobalConsistencyStreaks, 
+  calculateCorrelationData 
+} from "../lib/intelligenceEngine";
+import { 
+  calculateLevelInfo, 
+  processXpAward,
+  processXpReversal
+} from "../lib/xpService";
+import { 
+  estimateStrengthWorkoutCalories
+} from "../lib/calorieBurnService";
+import { 
+  calculateWalkingFromSteps, 
+  calculateWalkingFromDistance, 
+  calculateWalkingFromDuration, 
+  deduplicateWalkingActivity 
+} from "../lib/activityCalculationService";
+import { 
+  detectPersonalRecords
+} from "../lib/workoutProgressService";
+import { 
+  checkAndUnlockAchievements
+} from "../lib/achievementService";
 
-const today = () => format(new Date(), 'yyyy-MM-dd');
+export const today = () => format(new Date(), 'yyyy-MM-dd');
 
 const INITIAL_WATER_SCHEDULE = [
   { id: 'w1', time: '08:00 AM', amount: '500ml' },
@@ -148,43 +175,10 @@ export const WORKOUT_TEMPLATES = [
   { id: 't6', name: 'Core Blast', emoji: '🔥', exercises: ['Plank', 'Crunches', 'Lunges', 'Push Up'] },
 ];
 
-export const calculateLevel = (xp) => {
-  // Rigorous Neural Progression Formula: XP = 250 * (Level^2 - Level)
-  // This creates a progressively steeper climb, ensuring 'Master' ranks are genuinely difficult to achieve.
-  const getXpForLevel = (lvl) => 250 * (Math.pow(lvl, 2) - lvl);
-  
-  const RANKS = [
-    { minLvl: 1,  maxLvl: 3,  title: 'Novice Operative',   color: '#94a3b8' },
-    { minLvl: 4,  maxLvl: 6,  title: 'Tactical Analyst',   color: '#38bdf8' },
-    { minLvl: 7,  maxLvl: 10, title: 'Field Commander',    color: '#818cf8' },
-    { minLvl: 11, maxLvl: 15, title: 'Strategic Vanguard', color: '#a855f7' },
-    { minLvl: 16, maxLvl: 20, title: 'Neural Sovereign',   color: '#fb7185' },
-    { minLvl: 21, maxLvl: 30, title: 'Quantum Overseer',   color: '#f472b6' },
-    { minLvl: 31, maxLvl: 99, title: 'Grandmaster of Order', color: '#facc15' },
-  ];
-
-  let currentLvl = 1;
-  while (xp >= getXpForLevel(currentLvl + 1)) {
-    currentLvl++;
-  }
-
-  const currentRank = RANKS.find(r => currentLvl >= r.minLvl && currentLvl <= r.maxLvl) || RANKS[RANKS.length - 1];
-  const xpCurrent = getXpForLevel(currentLvl);
-  const xpNext = getXpForLevel(currentLvl + 1);
-  const progress = ((xp - xpCurrent) / (xpNext - xpCurrent)) * 100;
-
-  return {
-    level: currentLvl,
-    title: currentRank.title,
-    rankColor: currentRank.color,
-    xpRequired: xpNext,
-    currentLevelXp: xpCurrent,
-    progress: Math.min(100, Math.max(0, progress))
-  };
-};
+export const calculateLevel = (xp) => calculateLevelInfo(xp);
 
 // Tactical Selector for Operative Progression
-export const getLevelInfo = (state) => calculateLevel(state.gamification?.xp || 0);
+export const getLevelInfo = (state) => calculateLevelInfo(state.gamification?.xp || 0);
 
 
 const createTask = (overrides = {}) => ({
@@ -202,8 +196,21 @@ const defaultState = {
   tasks: {},
   submittedDays: {},
   analytics: {},
-  gamification: { xp: 0, streak: 0, lastActiveDate: null, achievements: [], gymStreak: 0, lastGymDate: null },
-  pomodoro: { running: false, mode: 'focus', timeLeft: 25 * 60, sessions: 0, linkedTaskId: null },
+  gamification: { xp: 0, streak: 0, lastActiveDate: null, achievements: [], gymStreak: 0, lastGymDate: null, xpTransactions: [] },
+  walkingLogs: {},
+  pomodoro: { 
+    running: false, 
+    mode: 'focus', 
+    timeLeft: 25 * 60, 
+    totalDuration: 25 * 60,
+    targetEndTime: null, 
+    sessions: 0, 
+    linkedTaskId: null,
+    history: [],
+    totalFocusSeconds: 0
+  },
+  lastSyncTimestamp: null,
+  pendingSync: false,
   journal: {},
   settings: { 
     pomodoroFocus: 25, 
@@ -214,7 +221,8 @@ const defaultState = {
     sound: true,
     notificationSound: 'Default Pulse',
     syncInterval: 5,
-    autoSave: true
+    autoSave: true,
+    adjustCalorieTargetWithActivity: false
   },
   activeDate: today(),
   currentPage: localStorage.getItem('NeuralOS_activePage') || 'dashboard',
@@ -229,6 +237,14 @@ const defaultState = {
   // Routines
   routines: [],
   appliedRoutines: {},
+
+  // Habits
+  habits: [
+    { id: 'h1', name: 'Morning Hydration', icon: '💧', color: '#38bdf8', category: 'Health', target: 500, unit: 'ml', frequency: 'daily', scheduledDays: [0, 1, 2, 3, 4, 5, 6], archived: false, createdAt: new Date().toISOString() },
+    { id: 'h2', name: 'Read Book / Learn', icon: '📖', color: '#a78bfa', category: 'Learning', target: 20, unit: 'minutes', frequency: 'daily', scheduledDays: [0, 1, 2, 3, 4, 5, 6], archived: false, createdAt: new Date().toISOString() },
+    { id: 'h3', name: 'Physical Conditioning', icon: '💪', color: '#f59e0b', category: 'Fitness', target: 45, unit: 'minutes', frequency: 'weekdays', scheduledDays: [1, 2, 3, 4, 5], archived: false, createdAt: new Date().toISOString() },
+  ],
+  habitLogs: {},
 
   waterLogs: {},
   waterGoal: 8,
@@ -250,9 +266,37 @@ const defaultState = {
   gymScheduleEnabled: true,
   activeGymTab: 'workout',
   restTimer: { duration: 60, timeLeft: 0, running: false, sound: true },
+
+  // Diet OS Slices
+  dietEntries: {},
+  customFoods: [],
+  savedMeals: [],
+  recipes: [],
+  favoriteFoods: [],
+  dietGoals: {
+    age: 25,
+    gender: 'male',
+    weightKg: 70,
+    heightCm: 175,
+    activityLevel: 'moderately_active',
+    goalType: 'muscle_gain',
+    calories: 2200,
+    protein: 130,
+    carbs: 250,
+    fat: 65,
+    fiber: 30,
+    waterGoalMl: 3000,
+    isAutoCalculated: true
+  },
+  dietActiveDate: today(),
+
   syncLocked: true,
   isDataLoaded: false,
   syncError: null,
+
+  // Admin & Security
+  adminLogs: [],
+  adminSimulation: false,
 };
 
 export const useStore = create(
@@ -265,27 +309,43 @@ export const useStore = create(
 
       // --- Auth ---
       login: async (email, password) => {
-        try { await signInWithEmailAndPassword(auth, email, password); } 
-        catch (e) { throw e; }
+        await signInWithEmailAndPassword(auth, email, password);
       },
       isNewUser: false,
       signup: async (email, password, profileData) => {
         let user;
+        let isExistingAccount = false;
         try {
           const res = await createUserWithEmailAndPassword(auth, email, password);
           user = res.user;
         } catch (e) {
           if (e.code === 'auth/email-already-in-use') {
-            // Attempt to sign in instead to complete profile if it was a partial signup before
+            // Sign in to restore existing profile without overwriting data
             const res = await signInWithEmailAndPassword(auth, email, password);
             user = res.user;
+            isExistingAccount = true;
           } else {
             throw e;
           }
         }
 
-        try {
-          const userData = {
+        const userRef = doc(db, 'users', user.uid);
+        let userData;
+
+        if (isExistingAccount) {
+          // Fetch existing user doc to protect XP, level, and achievements from being wiped
+          const existingSnap = await getDoc(userRef).catch(() => null);
+          const existingData = existingSnap?.exists() ? existingSnap.data() : {};
+          userData = {
+            uid: user.uid,
+            email,
+            ...profileData,
+            ...existingData, // Preserve existing data
+            updatedAt: new Date().toISOString()
+          };
+          await setDoc(userRef, userData, { merge: true });
+        } else {
+          userData = {
             uid: user.uid,
             email,
             ...profileData,
@@ -295,16 +355,14 @@ export const useStore = create(
             streak: 0,
             achievements: []
           };
-          await setDoc(doc(db, 'users', user.uid), userData);
+          await setDoc(userRef, userData, { merge: true });
           set((s) => { s.isNewUser = true; });
-          return userData;
-        } catch (e) {
-          throw e;
         }
+
+        return userData;
       },
       requestPasswordReset: async (email) => {
-        try { await sendPasswordResetEmail(auth, email); }
-        catch (e) { throw e; }
+        await sendPasswordResetEmail(auth, email);
       },
       dismissWelcome: () => set((s) => { s.isNewUser = false; }),
       logout: () => {
@@ -316,6 +374,60 @@ export const useStore = create(
           s.isNewUser = false;
         });
       },
+      loginGuest: (guestName = 'Operative') => set((s) => {
+        s.user = {
+          uid: 'guest_local_user',
+          email: 'operative@taskbar.local',
+          username: guestName.toLowerCase().replace(/\s+/g, '_'),
+          fullName: guestName,
+          isGuest: true,
+          role: 'user',
+          customClaims: {}
+        };
+        s.isDataLoaded = true;
+        s.syncLocked = true;
+        s.authLoading = false;
+        s.syncError = null;
+      }),
+      loginAsTestAccount: (role = 'admin') => set((s) => {
+        const testProfiles = {
+          admin: {
+            uid: 'test_admin',
+            email: 'admin@taskbar.local',
+            username: 'administrator',
+            fullName: 'Platform Administrator',
+            role: 'admin',
+            customClaims: { admin: true, role: 'ADMIN' },
+            isGuest: true
+          },
+          user: {
+            uid: 'test_standard_user',
+            email: 'user@taskbar.local',
+            username: 'standard_user',
+            fullName: 'Standard User',
+            role: 'user',
+            customClaims: { admin: false, role: 'USER' },
+            isGuest: true
+          }
+        };
+
+        const targetProfile = (role === 'admin' || role === 'super_admin') ? testProfiles.admin : testProfiles.user;
+        Object.assign(s, defaultState);
+        s.user = targetProfile;
+        s.isDataLoaded = true;
+        s.syncLocked = true;
+        s.authLoading = false;
+        s.syncError = null;
+        s.currentPage = role === 'user' ? 'dashboard' : 'admin';
+      }),
+      wipeDatabaseAndReset: () => set((s) => {
+        Object.assign(s, defaultState);
+        s.user = null;
+        s.isDataLoaded = true;
+        s.syncLocked = false;
+        s.authLoading = false;
+        s.currentPage = 'dashboard';
+      }),
       setUser: (user) => set((s) => { 
         if (user && s.user?.uid !== user.uid) {
           Object.assign(s, { ...defaultState, syncLocked: true, isDataLoaded: false });
@@ -323,24 +435,17 @@ export const useStore = create(
         s.user = user; 
         s.authLoading = false; 
       }),
-      requestPasswordReset: async (email) => {
-        try { await sendPasswordResetEmail(auth, email); }
-        catch (e) { throw e; }
-      },
       updateUserPassword: async (newPassword) => {
         if (!auth.currentUser) throw new Error('No active operative found');
-        try { await updatePassword(auth.currentUser, newPassword); }
-        catch (e) { throw e; }
+        await updatePassword(auth.currentUser, newPassword);
       },
       updateProfile: async (updates) => {
         const currentUser = get().user;
         if (!currentUser) throw new Error('No active operative found');
-        try {
-          await updateDoc(doc(db, 'users', currentUser.uid), updates);
-          set((s) => {
-            if (s.user) Object.assign(s.user, updates);
-          });
-        } catch (e) { throw e; }
+        await updateDoc(doc(db, 'users', currentUser.uid), updates);
+        set((s) => {
+          if (s.user) Object.assign(s.user, updates);
+        });
       },
       setAuthLoading: (loading) => set((s) => { s.authLoading = loading; }),
       setHasHydrated: (val) => set((s) => { s._hasHydrated = val; }),
@@ -423,18 +528,51 @@ export const useStore = create(
         task.completedAt = task.completed ? new Date().toISOString() : null;
         if (task.completed) task.progress = 100;
 
-        // XP logic with Streak Multiplier
-        const streak = s.gamification.streak || 0;
-        const multiplier = streak >= 7 ? 1.5 : streak >= 3 ? 1.2 : 1.0;
-        const baseXP = PRIORITY_XP[task.priority] || 10;
-        const xpDelta = Math.round(baseXP * multiplier);
-        
-        s.gamification.xp = Math.max(0, s.gamification.xp + (task.completed ? xpDelta : -xpDelta));
-        
-        if (task.completed && multiplier > 1) {
-          toast.success(`Discipline Multiplier Active (${multiplier}x)! +${xpDelta} XP`, { icon: '🔥' });
-        } else if (task.completed) {
-          toast.success(`Task Complete! +${xpDelta} XP`, { icon: '🎯' });
+        // Idempotent XP logic with Streak Multiplier via Authoritative Engine
+        const sourceId = `task:${task.id}:${date}`;
+        if (!s.gamification.xpTransactions) s.gamification.xpTransactions = [];
+
+        if (task.completed) {
+          const streak = s.gamification.streak || 0;
+          const multiplier = streak >= 7 ? 1.5 : streak >= 3 ? 1.2 : 1.0;
+          const baseXP = PRIORITY_XP[task.priority] || 10;
+          const xpDelta = Math.round(baseXP * multiplier);
+
+          const res = processXpAward(s.gamification.xpTransactions, {
+            amount: xpDelta,
+            category: task.category || 'Work',
+            description: `Completed task: ${task.title || task.text || 'Mission'}`,
+            sourceId,
+            date
+          });
+
+          if (res.allowed && res.transaction) {
+            const prevLvl = calculateLevelInfo(s.gamification.xp || 0).level;
+            s.gamification.xpTransactions.unshift(res.transaction);
+            s.gamification.xp = (s.gamification.xp || 0) + res.transaction.amount;
+            const newLvl = calculateLevelInfo(s.gamification.xp).level;
+
+            if (multiplier > 1) {
+              toast.success(`Discipline Multiplier (${multiplier}x)! +${xpDelta} XP`, { icon: '🔥' });
+            } else {
+              toast.success(`Task Complete! +${xpDelta} XP`, { icon: '🎯' });
+            }
+
+            if (newLvl > prevLvl) {
+              toast.success(`RANK PROMOTION! Level ${newLvl} achieved 🎉`, {
+                duration: 5000,
+                style: { background: '#10b981', color: '#fff', fontWeight: 900 }
+              });
+            }
+          }
+        } else {
+          // Reopening task: audit reversal in ledger
+          const rev = processXpReversal(s.gamification.xpTransactions, sourceId, 'Task Reopened');
+          if (rev.allowed && rev.transaction) {
+            s.gamification.xpTransactions.unshift(rev.transaction);
+            s.gamification.xp = Math.max(0, (s.gamification.xp || 0) - rev.amount);
+            toast('Task reopened — XP reversed.', { icon: '↩️' });
+          }
         }
 
         if (task.completed) {
@@ -482,14 +620,25 @@ export const useStore = create(
             task.completedAt = new Date().toISOString();
             task.progress = 100;
             // XP logic with Streak Multiplier
+            if (!s.gamification.xpTransactions) s.gamification.xpTransactions = [];
             const streak = s.gamification.streak || 0;
             const multiplier = streak >= 7 ? 1.5 : streak >= 3 ? 1.2 : 1.0;
             const baseXP = PRIORITY_XP[task.priority] || 10;
             const xpDelta = Math.round(baseXP * multiplier);
-            
-            s.gamification.xp += xpDelta;
-            if (multiplier > 1) {
-              toast.success(`Discipline Multiplier Active (${multiplier}x)! +${xpDelta} XP`, { icon: '🔥' });
+            const sourceId = `task:${task.id}:${date}`;
+            const awardRes = processXpAward(s.gamification.xpTransactions, {
+              amount: xpDelta,
+              category: 'Task',
+              description: `Task completed via timer: ${task.title}${multiplier > 1 ? ` (${multiplier}x bonus)` : ''}`,
+              sourceId,
+              date
+            });
+            if (awardRes.allowed && awardRes.transaction) {
+              s.gamification.xpTransactions.unshift(awardRes.transaction);
+              s.gamification.xp = (s.gamification.xp || 0) + awardRes.transaction.amount;
+              if (multiplier > 1) {
+                toast.success(`Discipline Multiplier Active (${multiplier}x)! +${xpDelta} XP`, { icon: '🔥' });
+              }
             }
           }
         } else if (type === 'exercise') {
@@ -687,24 +836,6 @@ export const useStore = create(
         
         return 'Rest Day / No Activity';
       },
-      applyGymScheduleForDate: (date) => set((s) => {
-        if (s.workouts[date]) return; // Already exists
-        const dow = new Date(date + 'T12:00:00').getDay();
-        const sched = s.gymSchedule[dow];
-        if (sched && sched.exercises?.length > 0) {
-          s.workouts[date] = {
-            id: uuidv4(),
-            name: sched.name,
-            date,
-            completed: false,
-            exercises: sched.exercises.map(ex => ({
-              ...ex,
-              id: uuidv4(),
-              sets: Array(ex.targetSets || 3).fill(0).map(() => ({ id: uuidv4(), weight: '', reps: '', completed: false }))
-            }))
-          };
-        }
-      }),
 
       // --- BIO-HACKING: SLEEP & ENERGY ---
       logSleep: (date, data) => set((s) => {
@@ -759,9 +890,20 @@ export const useStore = create(
         
         // Perfect Mission Bonus
         if (isPerfect) {
-          const bonus = 250;
-          s.gamification.xp += bonus;
-          toast.success(`MISSION MASTERED: 100% Completion Bonus! +${bonus} XP`, { icon: '🏆', duration: 5000 });
+          if (!s.gamification.xpTransactions) s.gamification.xpTransactions = [];
+          const bonusSourceId = `perfect_day_${date}`;
+          const bonusRes = processXpAward(s.gamification.xpTransactions, {
+            amount: 250,
+            category: 'Mission',
+            description: `100% Day Completion Bonus for ${date}`,
+            sourceId: bonusSourceId,
+            date
+          });
+          if (bonusRes.allowed && bonusRes.transaction) {
+            s.gamification.xpTransactions.unshift(bonusRes.transaction);
+            s.gamification.xp = (s.gamification.xp || 0) + bonusRes.transaction.amount;
+            toast.success(`MISSION MASTERED: 100% Completion Bonus! +250 XP`, { icon: '🏆', duration: 5000 });
+          }
         }
 
         // Streak Management
@@ -823,32 +965,253 @@ export const useStore = create(
         }
       }),
 
-      // --- POMODORO ---
+      // --- POMODORO (PERSISTENT ABSOLUTE-TIME ARCHITECTURE) ---
       setPomodoroState: (updates) => set((s) => { Object.assign(s.pomodoro, updates); }),
+
+      startPomodoro: (mode, durationMinutes, linkedTaskId = null) => set((s) => {
+        const targetMode = mode || s.pomodoro.mode || 'focus';
+        const focusMins = s.settings.pomodoroFocus || 25;
+        const shortBreakMins = s.settings.pomodoroShortBreak || 5;
+        const longBreakMins = s.settings.pomodoroLongBreak || 15;
+
+        const mins = durationMinutes || (targetMode === 'focus' ? focusMins : targetMode === 'short-break' ? shortBreakMins : longBreakMins);
+        const totalDuration = mins * 60;
+        const now = Date.now();
+
+        s.pomodoro.running = true;
+        s.pomodoro.mode = targetMode;
+        s.pomodoro.totalDuration = totalDuration;
+        s.pomodoro.timeLeft = totalDuration;
+        s.pomodoro.targetEndTime = now + (totalDuration * 1000);
+        if (linkedTaskId !== null) s.pomodoro.linkedTaskId = linkedTaskId;
+      }),
+
+      pausePomodoro: () => set((s) => {
+        if (!s.pomodoro.running) return;
+        const now = Date.now();
+        if (s.pomodoro.targetEndTime) {
+          s.pomodoro.timeLeft = Math.max(0, Math.ceil((s.pomodoro.targetEndTime - now) / 1000));
+        }
+        s.pomodoro.running = false;
+        s.pomodoro.targetEndTime = null;
+      }),
+
+      resumePomodoro: () => set((s) => {
+        if (s.pomodoro.running || s.pomodoro.timeLeft <= 0) return;
+        const now = Date.now();
+        s.pomodoro.running = true;
+        s.pomodoro.targetEndTime = now + (s.pomodoro.timeLeft * 1000);
+      }),
+
+      resetPomodoro: () => set((s) => {
+        const targetMode = s.pomodoro.mode || 'focus';
+        const focusMins = s.settings.pomodoroFocus || 25;
+        const shortBreakMins = s.settings.pomodoroShortBreak || 5;
+        const longBreakMins = s.settings.pomodoroLongBreak || 15;
+        const mins = targetMode === 'focus' ? focusMins : targetMode === 'short-break' ? shortBreakMins : longBreakMins;
+        const totalDuration = mins * 60;
+
+        s.pomodoro.running = false;
+        s.pomodoro.targetEndTime = null;
+        s.pomodoro.timeLeft = totalDuration;
+        s.pomodoro.totalDuration = totalDuration;
+      }),
+
+      skipPomodoroSession: () => set((s) => {
+        const currentMode = s.pomodoro.mode;
+        const nextMode = currentMode === 'focus' ? 'short-break' : 'focus';
+        const focusMins = s.settings.pomodoroFocus || 25;
+        const shortBreakMins = s.settings.pomodoroShortBreak || 5;
+        const mins = nextMode === 'focus' ? focusMins : shortBreakMins;
+        const totalDuration = mins * 60;
+
+        s.pomodoro.running = false;
+        s.pomodoro.targetEndTime = null;
+        s.pomodoro.mode = nextMode;
+        s.pomodoro.timeLeft = totalDuration;
+        s.pomodoro.totalDuration = totalDuration;
+      }),
+
+      completePomodoroSession: (sessionId) => set((s) => {
+        s.pomodoro.running = false;
+        s.pomodoro.targetEndTime = null;
+        s.pomodoro.timeLeft = 0;
+        
+        const isFocus = s.pomodoro.mode === 'focus';
+        if (isFocus) {
+          s.pomodoro.sessions = (s.pomodoro.sessions || 0) + 1;
+          const sessionSecs = s.pomodoro.totalDuration || (25 * 60);
+          s.pomodoro.totalFocusSeconds = (s.pomodoro.totalFocusSeconds || 0) + sessionSecs;
+
+          // If linked to a task, update the task's timeTaken
+          if (s.pomodoro.linkedTaskId) {
+            const todayStr = today();
+            const todayTasks = s.tasks[todayStr] || [];
+            const linked = todayTasks.find(t => t.id === s.pomodoro.linkedTaskId);
+            if (linked) {
+              linked.timeTaken = (linked.timeTaken || 0) + sessionSecs;
+            }
+          }
+
+          // Anti-farming idempotent XP award (+25 XP)
+          const sid = sessionId || `focus_${today()}_${Date.now()}`;
+          if (!s.gamification.xpTransactions) s.gamification.xpTransactions = [];
+          const awardRes = processXpAward(s.gamification.xpTransactions, {
+            amount: 25,
+            category: 'Focus',
+            description: `Completed ${Math.round(sessionSecs / 60)}-minute Focus Session`,
+            sourceId: sid
+          });
+          if (awardRes.allowed && awardRes.transaction) {
+            s.gamification.xpTransactions.unshift(awardRes.transaction);
+            s.gamification.xp = (s.gamification.xp || 0) + awardRes.transaction.amount;
+          }
+
+          if (!s.pomodoro.history) s.pomodoro.history = [];
+          s.pomodoro.history.unshift({
+            id: sid,
+            mode: 'focus',
+            durationMinutes: Math.round(sessionSecs / 60),
+            completedAt: new Date().toISOString(),
+            taskId: s.pomodoro.linkedTaskId
+          });
+        }
+      }),
+
+      // --- HABITS ACTIONS ---
+      addHabit: (habitData) => set((s) => {
+        if (!s.habits) s.habits = [];
+        const newHabit = {
+          id: uuidv4(),
+          name: habitData.name || 'New Habit',
+          icon: habitData.icon || '⭐',
+          color: habitData.color || '#6e6aff',
+          category: habitData.category || 'Health',
+          target: Number(habitData.target) || 1,
+          unit: habitData.unit || 'times',
+          frequency: habitData.frequency || 'daily',
+          scheduledDays: habitData.scheduledDays || [0, 1, 2, 3, 4, 5, 6],
+          reminderTime: habitData.reminderTime || '',
+          notes: habitData.notes || '',
+          archived: false,
+          createdAt: new Date().toISOString()
+        };
+        s.habits.push(newHabit);
+      }),
+
+      updateHabit: (id, updates) => set((s) => {
+        if (!s.habits) return;
+        const habit = s.habits.find(h => h.id === id);
+        if (habit) Object.assign(habit, updates);
+      }),
+
+      deleteHabit: (id) => set((s) => {
+        if (!s.habits) return;
+        s.habits = s.habits.filter(h => h.id !== id);
+        if (s.habitLogs) {
+          Object.keys(s.habitLogs).forEach(dateKey => {
+            if (s.habitLogs[dateKey]?.[id] !== undefined) {
+              delete s.habitLogs[dateKey][id];
+            }
+          });
+        }
+      }),
+
+      toggleArchiveHabit: (id) => set((s) => {
+        if (!s.habits) return;
+        const habit = s.habits.find(h => h.id === id);
+        if (habit) habit.archived = !habit.archived;
+      }),
+
+      logHabit: (habitId, date, completed) => set((s) => {
+        const d = date || today();
+        if (!s.habitLogs) s.habitLogs = {};
+        if (!s.habitLogs[d]) s.habitLogs[d] = {};
+
+        const prevDone = !!s.habitLogs[d][habitId];
+        const nextDone = completed !== undefined ? Boolean(completed) : !prevDone;
+        s.habitLogs[d][habitId] = nextDone;
+
+        const habit = (s.habits || []).find(h => h.id === habitId);
+        const habitName = habit?.name || 'Habit';
+        const sourceId = `habit:${habitId}:${d}`;
+        if (!s.gamification.xpTransactions) s.gamification.xpTransactions = [];
+
+        if (nextDone && !prevDone) {
+          const awardRes = processXpAward(s.gamification.xpTransactions, {
+            amount: 15,
+            category: 'Habit',
+            description: `Completed habit: ${habitName}`,
+            sourceId,
+            date: d
+          });
+          if (awardRes.allowed && awardRes.transaction) {
+            s.gamification.xpTransactions.unshift(awardRes.transaction);
+            s.gamification.xp = (s.gamification.xp || 0) + awardRes.transaction.amount;
+          }
+        } else if (!nextDone && prevDone) {
+          const revRes = processXpReversal(s.gamification.xpTransactions, sourceId, 'Habit Unchecked');
+          if (revRes.allowed && revRes.transaction) {
+            s.gamification.xpTransactions.unshift(revRes.transaction);
+            s.gamification.xp = Math.max(0, (s.gamification.xp || 0) - revRes.amount);
+          }
+        }
+      }),
 
       // --- SETTINGS & DATA ---
       updateSettings: (updates) => set((s) => { Object.assign(s.settings, updates); }),
       
-      exportData: () => {
+      exportData: (formatType = 'json') => {
         const state = get();
+        if (formatType === 'csv') {
+          // Flatten tasks to CSV
+          const rows = [['Date', 'Title', 'Priority', 'Category', 'Completed', 'TimeTakenSeconds']];
+          Object.entries(state.tasks || {}).forEach(([d, list]) => {
+            (list || []).forEach(t => {
+              rows.push([d, t.title || '', t.priority || 'Medium', t.category || 'Work', t.completed ? 'Yes' : 'No', t.timeTaken || 0]);
+            });
+          });
+          const csvStr = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+          const blob = new Blob([csvStr], { type: 'text/csv' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `TaskBar_OS_Tasks_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+          toast.success('Tasks CSV exported successfully! 📂');
+          return;
+        }
+
         const exportObj = {
           tasks: state.tasks,
+          routines: state.routines,
+          habits: state.habits,
+          habitLogs: state.habitLogs,
           workouts: state.workouts,
           gamification: state.gamification,
           journal: state.journal,
-          routines: state.routines,
           waterLogs: state.waterLogs,
           waterSchedule: state.waterSchedule,
           waterCompletions: state.waterCompletions,
           moodLogs: state.moodLogs,
+          sleepLogs: state.sleepLogs,
+          energyLogs: state.energyLogs,
+          walkingLogs: state.walkingLogs,
           bodyMetrics: state.bodyMetrics,
           personalRecords: state.personalRecords,
           exerciseLibrary: state.exerciseLibrary,
+          dietEntries: state.dietEntries,
+          customFoods: state.customFoods,
+          savedMeals: state.savedMeals,
+          recipes: state.recipes,
+          dietGoals: state.dietGoals,
+          pomodoro: state.pomodoro,
           settings: state.settings,
           missionNotes: state.missionNotes,
           submittedDays: state.submittedDays,
           exportDate: new Date().toISOString(),
-          version: '1.0.0'
+          version: '1.2.0'
         };
         const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -929,25 +1292,34 @@ export const useStore = create(
         }
       },
 
-      importData: (jsonStr) => set((s) => {
+      importData: (jsonStr) => {
         try {
-          const data = JSON.parse(jsonStr);
-          // Selective merge or full override
+          const data = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+          if (!data || typeof data !== 'object') throw new Error('Invalid backup format');
+          
           const keys = [
             'tasks', 'workouts', 'gamification', 'journal', 'routines', 
+            'habits', 'habitLogs', 'dietEntries', 'customFoods', 'savedMeals',
+            'recipes', 'dietGoals', 'walkingLogs', 'pomodoro',
             'waterLogs', 'waterSchedule', 'waterCompletions', 'moodLogs', 
+            'sleepLogs', 'energyLogs',
             'bodyMetrics', 'personalRecords', 'exerciseLibrary', 'settings', 
             'missionNotes', 'submittedDays'
           ];
-          keys.forEach(key => {
-            if (data[key]) s[key] = data[key];
+
+          set((s) => {
+            keys.forEach(key => {
+              if (data[key] !== undefined) s[key] = data[key];
+            });
           });
           toast.success('Intelligence synchronized from backup! 🧠');
+          return { success: true };
         } catch (err) {
           toast.error('Data corruption detected in backup file.');
           console.error('Import error:', err);
+          return { success: false, error: err.message };
         }
-      }),
+      },
 
       // ===== GYM ACTIONS =====
       setActiveGymTab: (tab) => set((s) => { s.activeGymTab = tab; }),
@@ -990,7 +1362,14 @@ export const useStore = create(
         if (!w) return;
 
         if (w.completed) {
-          s.gamification.xp = Math.max(0, s.gamification.xp - (w.xpEarned || 0));
+          const workoutSourceId = `workout_${w.id || date}_${date}`;
+          const revRes = processXpReversal(s.gamification.xpTransactions || [], workoutSourceId, 'Workout Reset');
+          if (revRes.allowed && revRes.transaction) {
+            s.gamification.xpTransactions.unshift(revRes.transaction);
+            s.gamification.xp = Math.max(0, (s.gamification.xp || 0) - revRes.amount);
+          } else if (w.xpEarned) {
+            s.gamification.xp = Math.max(0, (s.gamification.xp || 0) - w.xpEarned);
+          }
           if (s.gamification.lastGymDate === date) {
             s.gamification.gymStreak = Math.max(0, s.gamification.gymStreak - 1);
             s.gamification.lastGymDate = null; 
@@ -1041,7 +1420,19 @@ export const useStore = create(
         const st = ex?.sets.find(s => s.id === setId);
         if (st && !st.completed) {
           st.completed = true;
-          s.gamification.xp += 10;
+          const sourceId = `gym:${date}:${exerciseId}:${setId}`;
+          if (!s.gamification.xpTransactions) s.gamification.xpTransactions = [];
+          const res = processXpAward(s.gamification.xpTransactions, {
+            amount: 10,
+            category: 'Fitness',
+            description: `Set Completed: ${ex.name}`,
+            sourceId,
+            date
+          });
+          if (res.allowed && res.transaction) {
+            s.gamification.xpTransactions.unshift(res.transaction);
+            s.gamification.xp = (s.gamification.xp || 0) + res.transaction.amount;
+          }
         }
       }),
       uncompleteGymSet: (date, exerciseId, setId) => set((s) => {
@@ -1049,16 +1440,37 @@ export const useStore = create(
         const st = ex?.sets.find(s => s.id === setId);
         if (st && st.completed) {
           st.completed = false;
-          s.gamification.xp -= 10;
+          const sourceId = `gym:${date}:${exerciseId}:${setId}`;
+          const rev = processXpReversal(s.gamification.xpTransactions || [], sourceId, 'Set Reopened');
+          if (rev.allowed && rev.transaction) {
+            s.gamification.xpTransactions.unshift(rev.transaction);
+            s.gamification.xp = Math.max(0, (s.gamification.xp || 0) - rev.amount);
+          }
         }
       }),
       deleteGymSet: (date, exerciseId, setId) => set((s) => {
         const ex = s.workouts[date]?.exercises.find(e => e.id === exerciseId);
         if (ex) ex.sets = ex.sets.filter(s => s.id !== setId);
       }),
+      awardXP: (payload) => set((s) => {
+        if (!s.gamification.xpTransactions) s.gamification.xpTransactions = [];
+        const prevLvl = calculateLevelInfo(s.gamification.xp).level;
+        const res = processXpAward(s.gamification.xpTransactions, payload);
+        if (res.allowed && res.transaction) {
+          s.gamification.xpTransactions.unshift(res.transaction);
+          s.gamification.xp += res.transaction.amount;
+          const newLvl = calculateLevelInfo(s.gamification.xp).level;
+          if (newLvl > prevLvl) {
+            toast.success(`LEVEL UP! Operative reached Level ${newLvl} 🎉`, {
+              duration: 6000,
+              style: { background: '#10b981', color: '#fff', fontWeight: 900 }
+            });
+          }
+        }
+      }),
+
       toggleSetComplete: (date, exId, setId) => set((s) => {
         if (setId === 'dummy' || setId === 'init') {
-          // Initialize workout from schedule if it doesn't exist
           const dow = new Date(date + 'T12:00:00').getDay();
           const sched = s.gymSchedule[dow];
           if (sched) {
@@ -1076,11 +1488,55 @@ export const useStore = create(
         const st = ex?.sets.find(s => s.id === setId);
         if (st) {
           st.completed = !st.completed;
-          // AUTOMATED RECOVERY: Trigger rest timer on completion
           if (st.completed) {
             s.restTimer.duration = 60;
             s.restTimer.timeLeft = 60;
             s.restTimer.running = true;
+
+            // Anti-Farming XP Award per Completed Set (+5 XP)
+            if (!s.gamification.xpTransactions) s.gamification.xpTransactions = [];
+            const setRes = processXpAward(s.gamification.xpTransactions, {
+              amount: 5,
+              category: 'Workout',
+              description: `Completed set (${ex.name}: ${st.weight || 0}kg × ${st.reps || 0} reps)`,
+              sourceId: `set_${setId}_${date}`
+            });
+            if (setRes.allowed && setRes.transaction) {
+              s.gamification.xpTransactions.unshift(setRes.transaction);
+              s.gamification.xp += setRes.transaction.amount;
+            }
+
+            // Automatic PR Detection
+            if (st.weight && st.reps) {
+              const prResult = detectPersonalRecords({
+                exerciseName: ex.name,
+                setWeight: st.weight,
+                setReps: st.reps,
+                existingPRs: s.personalRecords || []
+              });
+              if (prResult.isPR && prResult.prRecord) {
+                if (!s.personalRecords) s.personalRecords = [];
+                s.personalRecords.unshift(prResult.prRecord);
+                
+                // PR Bonus XP (+50 XP)
+                const prRes = processXpAward(s.gamification.xpTransactions, {
+                  amount: 50,
+                  category: 'Personal Record',
+                  description: prResult.message,
+                  sourceId: prResult.prRecord.id
+                });
+                if (prRes.allowed && prRes.transaction) {
+                  s.gamification.xpTransactions.unshift(prRes.transaction);
+                  s.gamification.xp += prRes.transaction.amount;
+                }
+
+                toast.success(prResult.message, { 
+                  icon: '🏆', 
+                  duration: 5000, 
+                  style: { background: '#8b5cf6', color: '#fff', fontWeight: 900 } 
+                });
+              }
+            }
           }
         }
       }),
@@ -1088,18 +1544,69 @@ export const useStore = create(
       completeWorkout: async (date) => {
         set((s) => {
           const w = s.workouts[date]; if (!w) return;
-          const completedSets = w.exercises.flatMap(e => e.sets).filter(st => st.completed).length;
-          let xp = Math.round(completedSets * 15 + (w.exercises.length * 10));
-          if (xp < 50) xp = 50;
+          const completedSets = w.exercises.flatMap(e => e.sets).filter(st => st.completed);
+          
+          let totalVolumeKg = 0;
+          completedSets.forEach(st => {
+            totalVolumeKg += (Number(st.weight) || 0) * (Number(st.reps) || 0);
+          });
+
+          // Central Calorie expenditure estimation
+          const durationMins = Math.max(15, Math.round((w.exercises.reduce((a, e) => a + (e.timeTaken || 0), 0)) / 60) || 45);
+          const estCalories = estimateStrengthWorkoutCalories({
+            durationMinutes: durationMins,
+            totalVolumeKg,
+            completedSets: completedSets.length,
+            weightKg: s.dietGoals?.weightKg || 70
+          });
+
           w.completed = true;
-          w.xpEarned = xp;
-          s.gamification.xp += xp;
+          w.estimatedCalories = estCalories.estimatedCalories;
+          w.totalVolumeKg = totalVolumeKg;
+          w.completedSetsCount = completedSets.length;
+
+          // Anti-Farming XP Award for Workout Completion (+50 XP)
+          if (!s.gamification.xpTransactions) s.gamification.xpTransactions = [];
+          const sourceId = `workout_${w.id || date}_${date}`;
+          const xpRes = processXpAward(s.gamification.xpTransactions, {
+            amount: 50,
+            category: 'Workout',
+            description: `Workout completed: ${w.name} (${completedSets.length} sets, ~${estCalories.estimatedCalories} kcal)`,
+            sourceId
+          });
+
+          if (xpRes.allowed && xpRes.transaction) {
+            s.gamification.xpTransactions.unshift(xpRes.transaction);
+            s.gamification.xp += xpRes.transaction.amount;
+            w.xpEarned = xpRes.transaction.amount;
+          }
+
+          // Streak Management
           const last = s.gamification.lastGymDate;
           if (last) {
             const diff = differenceInDays(parseISO(date), parseISO(last));
             s.gamification.gymStreak = diff === 1 ? s.gamification.gymStreak + 1 : diff === 0 ? (s.gamification.gymStreak || 1) : 1;
           } else { s.gamification.gymStreak = 1; }
           s.gamification.lastGymDate = date;
+
+          // Check and unlock verified achievements
+          const unlocked = checkAndUnlockAchievements(s);
+          if (unlocked.length > 0) {
+            unlocked.forEach(ach => {
+              s.achievements.unshift({ id: ach.id, title: ach.title, icon: ach.icon, color: ach.color, date });
+              const achXpRes = processXpAward(s.gamification.xpTransactions, {
+                amount: ach.xp,
+                category: 'Achievement',
+                description: `Unlocked Achievement: ${ach.title}`,
+                sourceId: `ach_${ach.id}`
+              });
+              if (achXpRes.allowed && achXpRes.transaction) {
+                s.gamification.xpTransactions.unshift(achXpRes.transaction);
+                s.gamification.xp += achXpRes.transaction.amount;
+              }
+              toast.success(`Achievement Unlocked: ${ach.title} 🏆 (+${ach.xp} XP)`, { duration: 5000 });
+            });
+          }
         });
         await get().syncFirestore();
       },
@@ -1135,6 +1642,229 @@ export const useStore = create(
         }
       }),
       setRestTimer: (updates) => set((s) => { Object.assign(s.restTimer, updates); }),
+
+      // --- DIET OS ACTIONS ---
+      setDietActiveDate: (date) => set((s) => { s.dietActiveDate = date; }),
+      
+      addDietEntry: (entryData, date) => set((s) => {
+        const d = date || s.dietActiveDate || today();
+        if (!s.dietEntries[d]) s.dietEntries[d] = [];
+        
+        // Calculate nutrients at save time to preserve historical accuracy
+        const calculatedNutrients = calculateEntryNutrients(
+          entryData.food,
+          Number(entryData.quantity),
+          entryData.unit
+        );
+
+        const newEntry = {
+          id: uuidv4(),
+          foodId: entryData.food.id,
+          foodName: entryData.food.name,
+          category: entryData.food.category || 'Other',
+          meal: entryData.meal || 'Lunch',
+          quantity: Number(entryData.quantity),
+          unit: entryData.unit || 'g',
+          rawOrCooked: entryData.food.rawOrCooked || 'cooked',
+          calculatedNutrients,
+          createdAt: new Date().toISOString()
+        };
+
+        s.dietEntries[d].push(newEntry);
+        toast.success(`Logged ${newEntry.foodName} (${newEntry.quantity}${newEntry.unit})`, { icon: '🥗' });
+      }),
+
+      updateDietEntry: (entryId, date, updates) => set((s) => {
+        const entries = s.dietEntries[date]; if (!entries) return;
+        const idx = entries.findIndex(e => e.id === entryId); if (idx === -1) return;
+        
+        const entry = entries[idx];
+        if (updates.quantity || updates.unit || updates.food) {
+          const foodObj = updates.food || { 
+            servingSize: entry.calculatedNutrients ? entry.quantity : 100, 
+            servingUnit: entry.unit,
+            calories: entry.calculatedNutrients.calories,
+            protein: entry.calculatedNutrients.protein,
+            carbs: entry.calculatedNutrients.carbs,
+            fat: entry.calculatedNutrients.fat,
+            fiber: entry.calculatedNutrients.fiber,
+            sugar: entry.calculatedNutrients.sugar,
+            sodium: entry.calculatedNutrients.sodium
+          };
+          const q = updates.quantity !== undefined ? Number(updates.quantity) : entry.quantity;
+          const u = updates.unit || entry.unit;
+          entry.calculatedNutrients = calculateEntryNutrients(foodObj, q, u);
+        }
+
+        Object.assign(entry, updates);
+        toast.success('Food entry updated', { icon: '✏️' });
+      }),
+
+      deleteDietEntry: (entryId, date) => set((s) => {
+        if (!s.dietEntries[date]) return;
+        s.dietEntries[date] = s.dietEntries[date].filter(e => e.id !== entryId);
+        toast.success('Entry removed', { icon: '🗑️' });
+      }),
+
+      addCustomFood: (foodData) => set((s) => {
+        const newFood = {
+          id: `custom_${uuidv4()}`,
+          name: foodData.name,
+          category: foodData.category || 'Custom Foods',
+          servingSize: Number(foodData.servingSize) || 100,
+          servingUnit: foodData.servingUnit || 'g',
+          calories: Number(foodData.calories) || 0,
+          protein: Number(foodData.protein) || 0,
+          carbs: Number(foodData.carbs) || 0,
+          fat: Number(foodData.fat) || 0,
+          fiber: Number(foodData.fiber) || 0,
+          sugar: Number(foodData.sugar) || 0,
+          sodium: Number(foodData.sodium) || 0,
+          source: 'User Custom',
+          rawOrCooked: foodData.rawOrCooked || 'cooked',
+          isCustom: true
+        };
+        s.customFoods.push(newFood);
+        toast.success(`Created custom food: ${newFood.name}`, { icon: '🍲' });
+      }),
+
+      toggleFavoriteFood: (foodId) => set((s) => {
+        if (!s.favoriteFoods) s.favoriteFoods = [];
+        if (s.favoriteFoods.includes(foodId)) {
+          s.favoriteFoods = s.favoriteFoods.filter(id => id !== foodId);
+        } else {
+          s.favoriteFoods.push(foodId);
+        }
+      }),
+
+      saveMealTemplate: (mealData) => set((s) => {
+        if (!s.savedMeals) s.savedMeals = [];
+        s.savedMeals.push({
+          id: uuidv4(),
+          name: mealData.name,
+          items: mealData.items || [],
+          createdAt: new Date().toISOString()
+        });
+        toast.success(`Saved meal template: ${mealData.name}`, { icon: '🍱' });
+      }),
+
+      deleteMealTemplate: (id) => set((s) => {
+        if (s.savedMeals) s.savedMeals = s.savedMeals.filter(m => m.id !== id);
+      }),
+
+      saveRecipe: (recipeData) => set((s) => {
+        if (!s.recipes) s.recipes = [];
+        s.recipes.push({
+          id: uuidv4(),
+          name: recipeData.name,
+          servings: Number(recipeData.servings) || 1,
+          ingredients: recipeData.ingredients || [],
+          totals: recipeData.totals || {},
+          perServing: recipeData.perServing || {},
+          createdAt: new Date().toISOString()
+        });
+        toast.success(`Recipe saved: ${recipeData.name}`, { icon: '📖' });
+      }),
+
+      deleteRecipe: (id) => set((s) => {
+        if (s.recipes) s.recipes = s.recipes.filter(r => r.id !== id);
+      }),
+
+      updateDietGoals: (goalsData) => set((s) => {
+        Object.assign(s.dietGoals, goalsData);
+        toast.success('Diet goals updated!', { icon: '🎯' });
+      }),
+
+      // --- WALKING & DAILY ACTIVITY ACTIONS ---
+      logWalkingActivity: (param1, param2) => set((s) => {
+        let d, activityData;
+        if (typeof param1 === 'string' && param1.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          d = param1;
+          activityData = param2 || {};
+        } else if (typeof param2 === 'string' && param2.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          d = param2;
+          activityData = param1 || {};
+        } else if (typeof param1 === 'object') {
+          activityData = param1 || {};
+          d = param2 || s.dietActiveDate || s.gymActiveDate || today();
+        } else {
+          d = param1 || s.dietActiveDate || today();
+          activityData = param2 || {};
+        }
+
+        if (!s.walkingLogs) s.walkingLogs = {};
+        if (!s.walkingLogs[d] || !Array.isArray(s.walkingLogs[d])) s.walkingLogs[d] = [];
+
+        const heightCm = s.dietGoals?.heightCm || 175;
+        const weightKg = s.dietGoals?.weightKg || 70;
+
+        let calcResult;
+        if (activityData.inputMode === 'steps') {
+          calcResult = calculateWalkingFromSteps({
+            steps: activityData.steps,
+            heightCm,
+            weightKg,
+            intensityKey: activityData.intensity || 'normal'
+          });
+        } else if (activityData.inputMode === 'distance') {
+          calcResult = calculateWalkingFromDistance({
+            distanceKm: activityData.distanceKm,
+            heightCm,
+            weightKg,
+            intensityKey: activityData.intensity || 'normal'
+          });
+        } else {
+          calcResult = calculateWalkingFromDuration({
+            durationMinutes: activityData.durationMinutes,
+            heightCm,
+            weightKg,
+            intensityKey: activityData.intensity || 'normal'
+          });
+        }
+
+        const logEntry = {
+          id: activityData.id || uuidv4(),
+          date: d,
+          inputMode: activityData.inputMode || 'steps',
+          ...calcResult,
+          timestamp: new Date().toISOString()
+        };
+
+        s.walkingLogs[d] = deduplicateWalkingActivity(s.walkingLogs[d], logEntry);
+
+        // Anti-Farming XP Award for Walking Activity (+15 XP for >3000 steps or >20 min walk)
+        if (calcResult.steps >= 3000 || calcResult.durationMinutes >= 20) {
+          if (!s.gamification.xpTransactions) s.gamification.xpTransactions = [];
+          const sourceId = `walk_${logEntry.id}_${d}`;
+          const xpRes = processXpAward(s.gamification.xpTransactions, {
+            amount: 15,
+            category: 'Walking',
+            description: `Logged Walking: ${calcResult.steps} steps (~${calcResult.estimatedCalories} kcal)`,
+            sourceId
+          });
+          if (xpRes.allowed && xpRes.transaction) {
+            s.gamification.xpTransactions.unshift(xpRes.transaction);
+            s.gamification.xp += xpRes.transaction.amount;
+          }
+        }
+
+        toast.success(`Logged Walking: ${calcResult.steps.toLocaleString()} steps (~${calcResult.estimatedCalories} kcal)`, { icon: '🚶' });
+      }),
+
+      deleteWalkingLog: (date, logId) => set((s) => {
+        if (s.walkingLogs && s.walkingLogs[date]) {
+          s.walkingLogs[date] = s.walkingLogs[date].filter(l => l.id !== logId);
+          toast.success('Activity log removed', { icon: '🗑️' });
+        }
+      }),
+
+      // --- CROSS-MODULE INTELLIGENCE ENGINE SELECTORS ---
+      getDailySnapshot: (date) => getDailySnapshot(get(), date || today()),
+      getTodayPriorities: (date) => getTodayPriorities(get(), date || today()),
+      getNextAction: (date) => getNextAction(get(), date || today()),
+      getCrossModuleInsights: (date) => generateCrossModuleInsights(get(), date || today()),
+      getGlobalConsistencyStreaks: () => getGlobalConsistencyStreaks(get()),
+      calculateCorrelationData: (daysCount) => calculateCorrelationData(get(), daysCount || 14),
 
       syncFirestore: async () => {
         const { user, syncLocked, isDataLoaded } = get();
@@ -1185,15 +1915,26 @@ export const useStore = create(
           activeTimer: state.activeTimer,
           achievements: state.achievements,
           sleepLogs: state.sleepLogs,
-          energyLogs: state.energyLogs
+          energyLogs: state.energyLogs,
+          dietEntries: state.dietEntries,
+          customFoods: state.customFoods,
+          savedMeals: state.savedMeals,
+          recipes: state.recipes,
+          favoriteFoods: state.favoriteFoods,
+          dietGoals: state.dietGoals,
+          walkingLogs: state.walkingLogs,
+          habits: state.habits,
+          habitLogs: state.habitLogs
         });
 
         if (!dataToSync) return;
 
         try {
           await setDoc(doc(db, "users", user.uid, "data", "state_v4"), dataToSync);
+          set({ lastSyncTimestamp: new Date().toISOString(), pendingSync: false, syncError: null });
         } catch (err) {
           console.error("Firestore Sync Error:", err);
+          set({ syncError: err.message || 'Sync failed', pendingSync: true });
         }
       },
 
@@ -1297,6 +2038,8 @@ export const useStore = create(
         // We persist these as a secondary safety layer, but cloud is primary
         tasks: state.tasks,
         routines: state.routines,
+        habits: state.habits,
+        habitLogs: state.habitLogs,
         workouts: state.workouts,
         gamification: state.gamification,
         waterSchedule: state.waterSchedule,
@@ -1306,7 +2049,16 @@ export const useStore = create(
         bodyMetrics: state.bodyMetrics,
         missionNotes: state.missionNotes,
         dailyFocus: state.dailyFocus,
-        quickNotes: state.quickNotes
+        quickNotes: state.quickNotes,
+        dietEntries: state.dietEntries,
+        customFoods: state.customFoods,
+        savedMeals: state.savedMeals,
+        recipes: state.recipes,
+        favoriteFoods: state.favoriteFoods,
+        dietGoals: state.dietGoals,
+        walkingLogs: state.walkingLogs,
+        pomodoro: state.pomodoro,
+        lastSyncTimestamp: state.lastSyncTimestamp
       }),
       onRehydrateStorage: () => (state) => {
         state.setHasHydrated(true);

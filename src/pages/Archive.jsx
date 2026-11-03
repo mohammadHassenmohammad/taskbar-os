@@ -1,7 +1,7 @@
 import { useStore } from '../store/useStore';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
-import { CheckCircle2, Lock, ArrowRight, Calendar } from 'lucide-react';
+import { Lock, ArrowRight } from 'lucide-react';
 import TaskCard from '../components/TaskCard';
 import { useState } from 'react';
 

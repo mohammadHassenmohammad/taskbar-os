@@ -19,8 +19,11 @@ const formatTime = (seconds) => {
   return `${s}s`;
 };
 
-function SidePanel({ date, tasks, pct, activeTimer, isSubmitted }) {
-  const { routines, waterSchedule, waterCompletions, toggleWaterScheduleItem, addWaterScheduleItem, removeWaterScheduleItem } = useStore();
+function SidePanel({ date, tasks, pct, isSubmitted }) {
+  const { 
+    routines, waterSchedule, waterCompletions, toggleWaterScheduleItem, addWaterScheduleItem, removeWaterScheduleItem,
+    dietEntries, dietGoals, setPage, setDietActiveDate, setGymActiveDate, workouts 
+  } = useStore();
   const [showAddWater, setShowAddWater] = useState(false);
   const [newTime, setNewTime] = useState('10:00 AM');
   const [newAmt, setNewAmt] = useState('250ml');
@@ -38,6 +41,11 @@ function SidePanel({ date, tasks, pct, activeTimer, isSubmitted }) {
   const totalFocusTime = tasks.reduce((acc, t) => acc + (t.timeTaken || 0), 0);
   const totalEstimated = tasks.reduce((acc, t) => acc + (t.estimatedTime || 0), 0) * 60; // Convert to seconds
 
+  const dayDiet = dietEntries[date] || [];
+  const dietCal = dayDiet.reduce((acc, e) => acc + (e.calculatedNutrients?.calories || 0), 0);
+  const dietProt = dayDiet.reduce((acc, e) => acc + (e.calculatedNutrients?.protein || 0), 0);
+  const dayWorkout = workouts[date];
+
   const catMap = tasks.reduce((acc, t) => {
     acc[t.category] = (acc[t.category] || 0) + 1;
     return acc;
@@ -45,6 +53,57 @@ function SidePanel({ date, tasks, pct, activeTimer, isSubmitted }) {
 
   return (
     <div className="today-side" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      
+      {/* Nutrition & Workout Command Widget */}
+      <motion.div className="card" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+        style={{ padding: '16px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+          Daily Protocol Overview
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Diet Quick Overview */}
+          <div 
+            onClick={() => { setDietActiveDate(date); setPage('diet'); }}
+            style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid var(--border-subtle)', cursor: 'pointer' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>🥗 Nutrition Intake</span>
+              <span style={{ fontSize: 10, color: 'var(--accent-primary)', fontWeight: 800 }}>Open Diet OS →</span>
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--text-primary)', marginTop: 4 }}>
+              {dietCal} <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>/ {dietGoals.calories || 2000} kcal</span>
+              <span style={{ fontSize: 12, color: '#6366f1', marginLeft: 10 }}>P: {dietProt}g</span>
+            </div>
+          </div>
+
+          {/* Workout Quick Overview */}
+          <div 
+            onClick={() => { setGymActiveDate(date); setPage('gym'); }}
+            style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid var(--border-subtle)', cursor: 'pointer' }}
+          >
+            {(() => {
+              const isRest = dayWorkout?.name?.toLowerCase().includes('rest');
+              const isCompleted = dayWorkout?.completed;
+              const hasCompletedSet = dayWorkout?.exercises?.some(ex => ex.sets?.some(s => s.completed));
+              const color = isCompleted ? '#10b981' : (isRest ? '#8b5cf6' : (hasCompletedSet ? '#3b82f6' : '#f59e0b'));
+              const label = isCompleted ? 'Workout Completed ⚡' : (isRest ? 'Rest / Recovery 🧘' : (hasCompletedSet ? `${dayWorkout?.name || 'Workout'} (In Progress)` : (dayWorkout ? `${dayWorkout.name}` : 'Pending Training')));
+              return (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>🏋️ Workout Status</span>
+                    <span style={{ fontSize: 10, color: 'var(--color-success)', fontWeight: 800 }}>Fitness OS →</span>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 900, color, marginTop: 4 }}>
+                    {label}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      </motion.div>
+
       {/* Intelligence Panel */}
       <motion.div className="card" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
         style={{ padding: '20px', background: 'linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(99,102,241,0.02) 100%)', border: '1.5px solid rgba(99,102,241,0.2)' }}>
@@ -199,10 +258,10 @@ function SidePanel({ date, tasks, pct, activeTimer, isSubmitted }) {
 export default function TodayTasks() {
   const { 
     activeDate, setActiveDate, getTasksForDate, submittedDays, reorderTasks, 
-    submitDay, unlockDay, applyRoutinesToDate, resetDayTasks, activeTimer,
-    postponeTask, journal, updateMissionLog, addMissionNote, editMissionNote, deleteMissionNote, missionNotes,
+    submitDay, unlockDay, applyRoutinesToDate, resetDayTasks,
+    addMissionNote, editMissionNote, deleteMissionNote, missionNotes,
     quickNotes, addQuickNote, deleteQuickNote, dailyFocus, setDailyFocus,
-    focusMode, toggleFocusMode 
+    focusMode, toggleFocusMode, activeTimer
   } = useStore();
   const [showModal, setShowModal] = useState(false);
   const [editTask, setEditTask] = useState(null);
@@ -211,7 +270,7 @@ export default function TodayTasks() {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editValue, setEditValue] = useState('');
 
-  useEffect(() => { applyRoutinesToDate(activeDate); }, [activeDate]);
+  useEffect(() => { applyRoutinesToDate(activeDate); }, [activeDate, applyRoutinesToDate]);
 
   const tasks = getTasksForDate(activeDate);
   const isSubmitted = submittedDays[activeDate];
@@ -414,17 +473,17 @@ export default function TodayTasks() {
           )}
         </motion.div>
 
-        {/* Mission Debrief Section */}
+        {/* Daily Reflection Section */}
         <motion.div className="card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
           style={{ padding: 24, background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', marginBottom: 100 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <Info size={18} color="var(--accent-primary)" />
-              <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)' }}>Mission Debrief</div>
+              <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)' }}>Daily Reflection</div>
             </div>
             {!isSubmitted && (
               <button className="btn btn-primary btn-sm" onClick={handleAddNote} disabled={!logInput.trim()} style={{ borderRadius: 10 }}>
-                <Send size={12} /> Submit Log
+                <Send size={12} /> Save Reflection
               </button>
             )}
           </div>
@@ -439,13 +498,13 @@ export default function TodayTasks() {
             />
           )}
 
-          {/* Debrief History Timeline */}
+          {/* Reflection History Timeline */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 8 }}>
-              Neural Timeline
+              Reflection History
             </div>
             <AnimatePresence>
-              {(missionNotes?.[activeDate] || []).map((note, i) => {
+              {(missionNotes?.[activeDate] || []).map((note) => {
                 const isEditing = editingNoteId === note.id;
                 return (
                   <motion.div key={note.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} 
@@ -503,27 +562,27 @@ export default function TodayTasks() {
             </AnimatePresence>
             {(!missionNotes[activeDate] || missionNotes[activeDate].length === 0) && (
               <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', padding: '20px 0' }}>
-                No debriefs recorded yet for this session.
+                No reflections recorded yet for this day.
               </div>
             )}
           </div>
 
-          {/* Neural Scratchpad Integration */}
+          {/* Daily Notes Integration */}
           <div style={{ marginTop: 32, padding: 24, background: 'var(--bg-elevated)', borderRadius: 'var(--radius-xl)', border: '1px solid var(--border-subtle)' }}>
              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
                 <div style={{ padding: 10, borderRadius: 12, background: 'rgba(var(--accent-primary-rgb), 0.1)', color: 'var(--accent-primary)' }}>
                    <Sparkles size={18} />
                 </div>
                 <div>
-                   <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: 1 }}>Neural Scratchpad</div>
-                   <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Capture tactical thoughts for this date</div>
+                   <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: 1 }}>Daily Notes</div>
+                   <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Quick capture for thoughts and reminders</div>
                 </div>
              </div>
 
              <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
                 <input 
                   type="text" 
-                  placeholder="NEW TACTICAL NOTE..."
+                  placeholder="Capture note or thought..."
                   className="form-input"
                   id="scratch-input"
                   onKeyDown={(e) => {

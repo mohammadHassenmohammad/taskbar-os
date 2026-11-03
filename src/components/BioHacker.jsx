@@ -2,8 +2,8 @@ import { useState, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { format, differenceInMinutes, parse } from 'date-fns';
 import { motion } from 'framer-motion';
-import { Moon, Sun, Zap, Activity, Info, ChevronRight, Save, Plus } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { Moon, Sun, Zap, Save, Plus } from 'lucide-react';
+import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts';
 import { toast } from 'react-hot-toast';
 
 export default function BioHacker() {
@@ -11,7 +11,7 @@ export default function BioHacker() {
   const today = format(new Date(), 'yyyy-MM-dd');
   
   const currentSleep = sleepLogs[today] || { start: '22:30', end: '06:30', quality: 7, notes: '' };
-  const currentEnergy = energyLogs[today] || [];
+  const currentEnergy = useMemo(() => energyLogs[today] || [], [energyLogs, today]);
   
   const [sleepData, setSleepData] = useState(currentSleep);
   const [energyLevel, setEnergyLevel] = useState(7);
@@ -25,7 +25,7 @@ export default function BioHacker() {
       const h = Math.floor(mins / 60);
       const m = mins % 60;
       return { h, m, total: mins };
-    } catch (e) { return { h: 0, m: 0, total: 0 }; }
+    } catch (_e) { return { h: 0, m: 0, total: 0 }; }
   }, [sleepData]);
 
   const handleSaveSleep = () => {

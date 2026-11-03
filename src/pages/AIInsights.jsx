@@ -1,40 +1,86 @@
 import { useMemo } from 'react';
 import { useStore } from '../store/useStore';
-import { format, subDays, eachDayOfInterval, isSameDay } from 'date-fns';
+import { format, subDays, eachDayOfInterval } from 'date-fns';
 import { motion } from 'framer-motion';
 import { Brain, TrendingUp, AlertTriangle, Zap, Target, Calendar, Activity, Lightbulb } from 'lucide-react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
-function InsightCard({ icon: Icon, title, body, color, delay = 0 }) {
+function InsightCard({ icon: Icon, title, body, evidence, color, delay = 0, actionTab, actionLabel, onAction }) {
   return (
     <motion.div
       style={{
         background: 'var(--bg-card)',
         border: `1px solid ${color}22`,
-        borderLeft: `3px solid ${color}`,
+        borderLeft: `4px solid ${color}`,
         borderRadius: 'var(--radius-lg)',
-        padding: '16px 20px',
+        padding: '18px 20px',
         display: 'flex',
-        gap: 14,
-        alignItems: 'flex-start',
+        flexDirection: 'column',
+        gap: 10
       }}
       initial={{ opacity: 0, x: -12 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay, duration: 0.35 }}
     >
-      <div style={{ width: 36, height: 36, borderRadius: 10, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <Icon size={18} color={color} />
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon size={18} color={color} />
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--text-primary)' }}>{title}</div>
+            <div style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>INSIGHT OBSERVATION</div>
+          </div>
+        </div>
+
+        {actionTab && actionLabel && (
+          <button 
+            className="btn btn-ghost btn-sm"
+            onClick={() => onAction(actionTab)}
+            style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent-primary)', flexShrink: 0, padding: '4px 10px', background: 'rgba(99,102,241,0.1)', borderRadius: 8 }}
+          >
+            {actionLabel} →
+          </button>
+        )}
       </div>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{title}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7 }}>{body}</div>
-      </div>
+
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{body}</div>
+
+      {evidence && (
+        <div style={{ padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border-subtle)', fontSize: 11, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <strong style={{ color: 'var(--accent-primary)', textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.5 }}>EVIDENCE:</strong>
+          <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{evidence}</span>
+        </div>
+      )}
     </motion.div>
   );
 }
 
 export default function AIInsights() {
-  const { tasks, gamification } = useStore();
+  const { 
+    tasks, gamification, getCrossModuleInsights, 
+    setPage, setDietActiveDate, setGymActiveDate 
+  } = useStore();
+
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  const handleAction = (tab) => {
+    if (tab === 'diet') setDietActiveDate(today);
+    if (tab === 'gym') setGymActiveDate(today);
+    setPage(tab || 'today');
+  };
+
+  const realInsights = useMemo(() => {
+    const list = getCrossModuleInsights(today);
+    return list.map(item => ({
+      icon: item.type === 'warning' ? AlertTriangle : item.type === 'success' ? Zap : Lightbulb,
+      title: item.title,
+      body: item.message,
+      color: item.type === 'warning' ? 'var(--color-warning)' : item.type === 'success' ? 'var(--color-success)' : 'var(--accent-primary)',
+      actionTab: item.actionTab,
+      actionLabel: item.actionLabel
+    }));
+  }, [getCrossModuleInsights, today]);
 
   const allTasks = useMemo(() => Object.values(tasks).flat(), [tasks]);
 
@@ -66,66 +112,64 @@ export default function AIInsights() {
   // Productivity patterns
   const patterns = useMemo(() => {
     const total = allTasks.length;
-    const completed = allTasks.filter((t) => t.completed).length;
+    const completed = allTasks.filter((t) => t?.completed).length;
     const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-    const highPriDone = allTasks.filter((t) => t.priority === 'High' && t.completed).length;
-    const highPriTotal = allTasks.filter((t) => t.priority === 'High').length;
+    const highPriTotal = allTasks.filter((t) => t?.priority === 'High').length;
+    const highPriDone = allTasks.filter((t) => t?.priority === 'High' && t?.completed).length;
     const highPriRate = highPriTotal > 0 ? Math.round((highPriDone / highPriTotal) * 100) : 0;
 
-    // Streaks
-    let maxStreak = 0, cur = 0;
-    trend30.forEach((d) => {
-      if (d.score !== null && d.score >= 50) { cur++; maxStreak = Math.max(maxStreak, cur); }
-      else cur = 0;
-    });
+    const currentStreak = Number(gamification?.streak) || 0;
+    const maxStreak = Math.max(currentStreak, Number(gamification?.maxStreak) || currentStreak);
 
     return { rate, highPriRate, highPriTotal, maxStreak };
-  }, [allTasks, trend30]);
+  }, [allTasks, gamification]);
+
+  const currentStreak = Number(gamification?.streak) || 0;
 
   // AI-generated insights
   const insights = useMemo(() => {
     const ins = [];
     if (allTasks.length === 0) {
-      ins.push({ icon: Target, title: 'Getting Started', body: 'Add your first tasks to unlock personalized AI productivity insights tailored to your patterns.', color: 'var(--accent-primary)' });
+      ins.push({ icon: Target, title: 'Getting Started', body: 'Add your first tasks to unlock personalized productivity insights tailored to your actual patterns.', color: 'var(--accent-primary)' });
       return ins;
     }
     if (patterns.rate >= 80) {
-      ins.push({ icon: Zap, title: 'High Performer', body: `Excellent! Your ${patterns.rate}% completion rate puts you in the top tier. Consistency is your superpower — keep building on it.`, color: 'var(--color-success)' });
+      ins.push({ icon: Zap, title: 'High Performer', body: `Consistent execution! Your ${patterns.rate}% completion rate demonstrates strong focus and daily follow-through.`, color: 'var(--color-success)' });
     } else if (patterns.rate >= 50) {
-      ins.push({ icon: TrendingUp, title: 'Growing Steadily', body: `Your ${patterns.rate}% completion rate shows good progress. Focus on completing one more task per day to break into high-performer territory.`, color: 'var(--color-info)' });
+      ins.push({ icon: TrendingUp, title: 'Growing Steadily', body: `Your ${patterns.rate}% completion rate shows steady progress. Focus on closing active tasks before starting new ones.`, color: 'var(--color-info)' });
     } else {
-      ins.push({ icon: AlertTriangle, title: 'Productivity Alert', body: `Your completion rate is ${patterns.rate}%. This may indicate over-planning. Try scheduling fewer, more focused tasks each day.`, color: 'var(--color-warning)' });
+      ins.push({ icon: AlertTriangle, title: 'Productivity Alert', body: `Your completion rate is currently ${patterns.rate}%. Consider scheduling fewer, higher-leverage tasks each day.`, color: 'var(--color-warning)' });
     }
 
     if (patterns.highPriRate < 60 && patterns.highPriTotal > 2) {
-      ins.push({ icon: AlertTriangle, title: 'Procrastination Pattern', body: `Only ${patterns.highPriRate}% of your high-priority tasks are completed. Tackle your hardest task first thing in the morning ("Eat the Frog" method).`, color: 'var(--color-danger)' });
+      ins.push({ icon: AlertTriangle, title: 'Priority Bottleneck', body: `Only ${patterns.highPriRate}% of high-priority tasks are completed. Schedule high-impact items during your peak morning energy window.`, color: 'var(--color-danger)' });
     } else if (patterns.highPriTotal > 0) {
-      ins.push({ icon: Target, title: 'Priority Focus', body: `Great job! You're completing ${patterns.highPriRate}% of high-priority tasks. This focused approach maximizes your impact.`, color: 'var(--color-success)' });
+      ins.push({ icon: Target, title: 'Priority Focus', body: `Great discipline! You are completing ${patterns.highPriRate}% of high-priority tasks.`, color: 'var(--color-success)' });
     }
 
-    if (gamification.streak >= 7) {
-      ins.push({ icon: Activity, title: 'Streak Champion', body: `🔥 ${gamification.streak}-day streak! You're building a powerful productivity habit. Research shows habits solidify after 21 days — keep going!`, color: 'var(--color-warning)' });
-    } else if (gamification.streak === 0) {
-      ins.push({ icon: Calendar, title: 'Start Your Streak', body: 'Consistency beats intensity. Completing even one task daily builds the momentum that separates successful people from the rest.', color: 'var(--accent-secondary)' });
+    if (currentStreak >= 7) {
+      ins.push({ icon: Activity, title: 'Streak Champion', body: `${currentStreak}-day consistency streak. Regular daily action builds lasting momentum.`, color: 'var(--color-warning)' });
+    } else if (currentStreak === 0) {
+      ins.push({ icon: Calendar, title: 'Build Consistency', body: 'Completing even one task today maintains streak momentum and focus.', color: 'var(--accent-secondary)' });
     }
 
     if (patterns.maxStreak >= 5) {
-      ins.push({ icon: Brain, title: 'Flow State Detected', body: `You achieved a ${patterns.maxStreak}-day productive streak in the last month. Identify what conditions made those days work and replicate them.`, color: 'var(--accent-primary)' });
+      ins.push({ icon: Brain, title: 'Consistency Trend', body: `You achieved a ${patterns.maxStreak}-day streak recently. Maintain this routine to consolidate habits.`, color: 'var(--accent-primary)' });
     }
 
-    ins.push({ icon: Lightbulb, title: 'Optimization Tip', body: 'Schedule your most cognitively demanding tasks between 9-11 AM when mental clarity peaks. Save administrative tasks for afternoons.', color: 'var(--accent-secondary)' });
+    ins.push({ icon: Lightbulb, title: 'Execution Tip', body: 'Group similar administrative tasks together to protect uninterrupted deep focus blocks.', color: 'var(--accent-secondary)' });
 
     return ins;
-  }, [patterns, gamification.streak]);
+  }, [patterns, currentStreak, allTasks.length]);
 
-  // Focus score (0-100)
-  const focusScore = Math.min(100, Math.round(
-    (patterns.rate * 0.4) +
-    (patterns.highPriRate * 0.3) +
-    (Math.min(gamification.streak, 30) / 30 * 100 * 0.2) +
-    (patterns.maxStreak / 5 * 100 * 0.1)
-  ));
+  // Focus score (0-100) — guaranteed non-NaN
+  const focusScore = Math.min(100, Math.max(0, Math.round(
+    ((patterns.rate || 0) * 0.4) +
+    ((patterns.highPriRate || 0) * 0.3) +
+    (Math.min(currentStreak, 30) / 30 * 100 * 0.2) +
+    (Math.min(patterns.maxStreak || 0, 5) / 5 * 100 * 0.1)
+  ))) || 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -215,15 +259,15 @@ export default function AIInsights() {
         </motion.div>
       </div>
 
-      {/* AI Insights */}
+      {/* AI Insights & Real Cross-Module Intelligence */}
       <div>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Brain size={16} color="var(--accent-primary)" />
-          Personalized Recommendations
+          <span>Real-Data Cross-Module Intelligence & Actionable Insights</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {insights.map((ins, i) => (
-            <InsightCard key={i} {...ins} delay={0.3 + i * 0.06} />
+          {[...realInsights, ...insights].map((ins, i) => (
+            <InsightCard key={i} {...ins} onAction={handleAction} delay={0.3 + i * 0.06} />
           ))}
         </div>
       </div>

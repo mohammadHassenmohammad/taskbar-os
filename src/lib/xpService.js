@@ -121,9 +121,10 @@ export const processXpAward = (existingTransactions = [], payload) => {
     return { allowed: false, transaction: null, reason: 'Unique sourceId required to enforce reward idempotency' };
   }
 
-  // Idempotency check: has this sourceId already awarded XP in the ledger?
-  const alreadyAwarded = existingTransactions.some(t => t.sourceId === sourceId && !t.isReversal);
-  if (alreadyAwarded) {
+  // Idempotency check: count positive awards vs reversals for this sourceId
+  const awardsCount = existingTransactions.filter(t => t.sourceId === sourceId && !t.isReversal).length;
+  const reversalsCount = existingTransactions.filter(t => (t.sourceId === `reversal:${sourceId}` || t.sourceId?.startsWith(`reversal:${sourceId}:`)) && t.isReversal).length;
+  if (awardsCount > reversalsCount) {
     return { allowed: false, transaction: null, reason: 'Reward already claimed for this event (Idempotency Protection)' };
   }
 
@@ -151,7 +152,7 @@ export const processXpAward = (existingTransactions = [], payload) => {
  * @returns {Object} { allowed: boolean, transaction: Object|null, amount: number }
  */
 export const processXpReversal = (existingTransactions = [], sourceId, reason = 'Action Reopened') => {
-  if (!sourceId) return { allowed: false, transaction: null, amount: 0 };
+  if (!sourceId) return { allowed: false, transaction: null, amount: 0, reason: 'Invalid sourceId' };
 
   // Find original positive award
   const original = existingTransactions.find(t => t.sourceId === sourceId && !t.isReversal);
@@ -159,12 +160,15 @@ export const processXpReversal = (existingTransactions = [], sourceId, reason = 
     return { allowed: false, transaction: null, amount: 0, reason: 'No prior award found to reverse' };
   }
 
-  // Check if reversal already recorded
-  const alreadyReversed = existingTransactions.some(t => t.sourceId === `reversal:${sourceId}`);
-  if (alreadyReversed) {
+  // Check if there is an active award to reverse
+  const awardsCount = existingTransactions.filter(t => t.sourceId === sourceId && !t.isReversal).length;
+  const reversalsCount = existingTransactions.filter(t => (t.sourceId === `reversal:${sourceId}` || t.sourceId?.startsWith(`reversal:${sourceId}:`)) && t.isReversal).length;
+  
+  if (awardsCount <= reversalsCount) {
     return { allowed: false, transaction: null, amount: 0, reason: 'Reversal already recorded' };
   }
 
+  const revSuffix = reversalsCount > 0 ? `:${reversalsCount + 1}` : '';
   const reversalTransaction = {
     id: uuidv4(),
     timestamp: new Date().toISOString(),
@@ -172,7 +176,7 @@ export const processXpReversal = (existingTransactions = [], sourceId, reason = 
     category: original.category,
     amount: -Math.abs(original.amount),
     description: `Reversal: ${original.description} (${reason})`,
-    sourceId: `reversal:${sourceId}`,
+    sourceId: `reversal:${sourceId}${revSuffix}`,
     isReversal: true
   };
 
@@ -213,6 +217,7 @@ export const getXpCategoryBreakdown = (transactions = []) => {
 /**
  * Reconciles stored total XP against the ledger of transactions.
  * Returns self-healing diagnostics without destructive resets.
+ * Corrects totals in both directions (increase or decrease).
  * 
  * Supports both signatures:
  *   reconcileXpLedger(gamificationState)
@@ -221,11 +226,14 @@ export const getXpCategoryBreakdown = (transactions = []) => {
 export const reconcileXpLedger = (firstArg = 0, secondArg = []) => {
   const isObj = typeof firstArg === 'object' && firstArg !== null;
   const currentLifetimeXp = isObj ? (firstArg.xp ?? firstArg.lifetimeXp ?? 0) : (Number(firstArg) || 0);
-  const transactions = isObj ? (firstArg.auditLedger ?? firstArg.transactions ?? []) : (Array.isArray(secondArg) ? secondArg : []);
+  const transactions = isObj 
+    ? (firstArg.xpTransactions ?? firstArg.auditLedger ?? firstArg.transactions ?? []) 
+    : (Array.isArray(secondArg) ? secondArg : []);
 
   const ledgerSum = transactions.reduce((sum, t) => {
-    const amt = Number(t.amount) || 0;
-    return sum + (t.isReversal ? -amt : amt);
+    const rawAmt = Number(t.amount) || 0;
+    const signedAmt = t.isReversal ? -Math.abs(rawAmt) : Math.abs(rawAmt);
+    return sum + signedAmt;
   }, 0);
 
   const currentTotal = Math.max(0, Number(currentLifetimeXp) || 0);
@@ -240,8 +248,8 @@ export const reconcileXpLedger = (firstArg = 0, secondArg = []) => {
     computedXp: normalizedLedgerSum,
     ledgerSum: normalizedLedgerSum,
     discrepancy: diff,
-    finalXp: Math.max(normalizedLedgerSum, currentTotal),
-    reconciledXp: Math.max(normalizedLedgerSum, currentTotal),
+    finalXp: normalizedLedgerSum,
+    reconciledXp: normalizedLedgerSum,
     auditedEvents: transactions.length
   };
 };

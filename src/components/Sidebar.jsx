@@ -1,5 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, LayoutDashboard, CheckSquare, Calendar, BarChart3, Timer, Sparkles, FileText, Archive, Settings, Repeat, Target, Zap, Flame, X, Dumbbell, LogOut, HelpCircle, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { 
+  ChevronLeft, ChevronRight, LayoutDashboard, CheckSquare, Calendar, BarChart3, 
+  Timer, Sparkles, FileText, Archive, Settings, Repeat, Zap, X, Dumbbell, 
+  Utensils, LogOut, HelpCircle, RefreshCw, Shield, Target
+} from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
@@ -10,11 +14,13 @@ const NAV_ITEMS = [
     { id: 'today', label: 'Today', icon: CheckSquare },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
     { id: 'gym', label: 'Fitness OS', icon: Dumbbell },
+    { id: 'diet', label: 'Diet OS', icon: Utensils },
   ]},
   { section: 'Productivity', items: [
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'focus', label: 'Focus Mode', icon: Timer },
+    { id: 'habits', label: 'Habits', icon: Target },
     { id: 'routines', label: 'Routines', icon: Repeat },
+    { id: 'focus', label: 'Focus Mode', icon: Timer },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'ai', label: 'AI Insights', icon: Sparkles },
   ]},
   { section: 'Reports', items: [
@@ -23,6 +29,7 @@ const NAV_ITEMS = [
   ]},
   { section: 'System', items: [
     { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'admin', label: 'Admin Console', icon: Shield },
     { id: 'guide', label: 'Manual', icon: HelpCircle },
   ]},
 ];
@@ -49,6 +56,18 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
     setPage(id);
     if (onMobileClose) onMobileClose();
   };
+
+  const isAdmin = user?.role === 'admin' || user?.customClaims?.admin === true || user?.customClaims?.role === 'ADMIN';
+
+  const filteredNavItems = NAV_ITEMS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => {
+      if (item.id === 'admin') {
+        return isAdmin;
+      }
+      return true;
+    })
+  })).filter(section => section.items.length > 0);
 
   const sidebarContent = (
     <motion.div
@@ -80,7 +99,14 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           </div>
         )}
         {collapsed && (
-          <div className="logo-icon" style={{ margin: '0 auto' }}><Zap size={18} fill="currentColor" /></div>
+          <button className="btn btn-ghost btn-icon btn-sm" onClick={toggleSidebar} title="Expand Sidebar" style={{ margin: '0 auto' }}>
+            <ChevronRight size={16} />
+          </button>
+        )}
+        {!isMobile && !collapsed && (
+          <button className="btn btn-ghost btn-icon btn-sm" onClick={toggleSidebar} title="Collapse Sidebar">
+            <ChevronLeft size={16} />
+          </button>
         )}
         {isMobile && mobileOpen && (
           <button className="btn btn-ghost btn-icon btn-sm" onClick={onMobileClose}>
@@ -107,7 +133,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         
         {/* Navigation */}
         <nav className="sidebar-nav" style={{ padding: '16px 12px', flexShrink: 0 }}>
-          {NAV_ITEMS.map((section) => (
+          {filteredNavItems.map((section) => (
             <div key={section.section} style={{ marginBottom: 12 }}>
               {!collapsed && <div className="nav-section-label" style={{ color: 'var(--text-muted)', fontSize: 10, fontWeight: 800, marginBottom: 6 }}>{section.section}</div>}
               {section.items.map((item) => {
@@ -166,7 +192,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
                     </span>
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    LEVEL {lvl.level} OPERATIVE
+                    LEVEL {lvl.level} • {lvl.title}
                   </div>
                 </div>
               </div>
@@ -181,7 +207,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         <div style={{ height: 20, flexShrink: 0 }} />
       </div>
 
-      {/* Fixed Footer: Operative Profile */}
+      {/* Fixed Footer: User Profile */}
       <div style={{ flexShrink: 0, padding: '12px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
         {!collapsed && (
           <div style={{ padding: '12px', borderRadius: 16, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -189,8 +215,8 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
               {(user?.username || 'U')[0].toUpperCase()}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.username || 'Operative'}</div>
-              <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700 }}>{lvl.title}</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.username || 'User'}</div>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700 }}>Level {lvl.level} • {lvl.title}</div>
             </div>
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={() => window.location.reload()} title="Reload OS" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><RefreshCw size={14} /></button>

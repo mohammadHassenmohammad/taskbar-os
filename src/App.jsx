@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
-import { Plus, Search, X, CheckSquare, ArrowRight, Zap } from 'lucide-react';
+import { Search, X, CheckSquare, ArrowRight, Zap } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { format, subDays, addMinutes } from 'date-fns';
+import { format } from 'date-fns';
 import { useStore } from './store/useStore';
 import { playNotificationSound } from './lib/audio';
 import Sidebar from './components/Sidebar';
@@ -19,121 +19,49 @@ import Archive from './pages/Archive';
 import Guide from './pages/Guide';
 import AIInsights from './pages/AIInsights';
 import Routines from './pages/Routines';
+import Habits from './pages/Habits';
 import Gym from './pages/Gym';
+import Diet from './pages/Diet';
+import Admin from './pages/Admin';
 import Auth from './components/Auth';
 import BottomNav from './components/BottomNav';
+import QuickLogBar from './components/QuickLogBar';
+import CommandPalette from './components/CommandPalette';
+import ErrorBoundary from './components/ErrorBoundary';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './lib/firebase';
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { NotificationService } from './lib/notifications';
 import { App as CapApp } from '@capacitor/app';
-
-// Helper for haptics — fails silently in browser
-const triggerHaptic = async () => {
-  try {
-    await Haptics.impact({ style: ImpactStyle.Light });
-  } catch (e) {
-    // Not on native — ignore
-  }
-};
-
-// Helper to fire a web notification safely (not available on native WebView)
-const fireWebNotification = (title, body) => {
-  try {
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, { body, icon: '/favicon.ico' });
-    }
-  } catch (e) {
-    // Ignore on native
-  }
-};
 
 const PAGES = {
   dashboard: Dashboard, today: TodayTasks, calendar: Calendar,
   analytics: Analytics, focus: FocusMode, report: MonthlyReport,
   settings: Settings, archive: Archive, ai: AIInsights,
-  routines: Routines, gym: Gym, guide: Guide,
+  routines: Routines, habits: Habits, gym: Gym, diet: Diet, guide: Guide,
+  admin: Admin,
 };
-
-function SearchOverlay({ onClose }) {
-  const { tasks, setActiveDate, setPage } = useStore();
-  const [query, setQuery] = useState('');
-
-  const results = query.trim().length > 1
-    ? Object.entries(tasks).flatMap(([date, dayTasks]) =>
-        dayTasks
-          .filter(t => t.title.toLowerCase().includes(query.toLowerCase()) || (t.description || '').toLowerCase().includes(query.toLowerCase()))
-          .map(t => ({ ...t, date }))
-      ).slice(0, 8)
-    : [];
-
-  useEffect(() => {
-    const handle = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handle);
-    return () => window.removeEventListener('keydown', handle);
-  }, [onClose]);
-
-  const PRIORITY_COLOR = { High: 'var(--priority-high)', Medium: 'var(--priority-medium)', Low: 'var(--priority-low)' };
-
-  return (
-    <motion.div className="search-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <motion.div className="search-box" initial={{ opacity: 0, y: -20, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.96 }} transition={{ duration: 0.2 }}>
-        <div className="search-input-wrap">
-          <Search size={18} color="var(--text-muted)" />
-          <input autoFocus className="search-input" placeholder="Search tasks across all days…" value={query} onChange={e => setQuery(e.target.value)} />
-          <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose}><X size={14} /></button>
-        </div>
-        <div className="search-results">
-          {query.length > 1 && results.length === 0 && (
-            <div className="search-empty">No tasks found for "{query}"</div>
-          )}
-          {results.map(task => (
-            <div key={task.id} className="search-result-item" onClick={() => { setActiveDate(task.date); setPage('today'); onClose(); }}>
-              <CheckSquare size={15} color={task.completed ? 'var(--color-success)' : 'var(--text-muted)'} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{task.date} · {task.category}</div>
-              </div>
-              <span style={{ fontSize: 10, fontWeight: 700, color: PRIORITY_COLOR[task.priority] }}>{task.priority}</span>
-              <ArrowRight size={13} color="var(--text-muted)" />
-            </div>
-          ))}
-          {query.length <= 1 && (
-            <div className="search-empty">Type at least 2 characters to search…<br /><span style={{ fontSize: 10 }}>Tip: Press Ctrl+K anytime to open search</span></div>
-          )}
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
 
 export default function App() {
   const { 
     theme, currentPage, setPage, focusMode, activeDate, applyRoutinesToDate, 
     applyGymScheduleForDate, user, setUser, loadUserData, authLoading, setAuthLoading,
-    isDataLoaded, syncFirestore, tasks, workouts, gamification, journal, routines,
-    waterLogs, waterSchedule, waterCompletions, moodLogs, bodyMetrics, personalRecords, 
-    exerciseLibrary, settings, missionNotes, submittedDays, submitDay,
-    syncError, bypassSync, logout
+    isDataLoaded, tasks, workouts, waterSchedule, waterCompletions,
+    settings, syncError, bypassSync, logout
   } = useStore();
 
   const PageComponent = PAGES[currentPage] || Dashboard;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [fabTaskOpen, setFabTaskOpen] = useState(false);
-  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
+  const [troubleshootTimedOut, setTroubleshootTimedOut] = useState(false);
 
   // Handle troubleshooting timeout for sync screen
   useEffect(() => {
-    if (user && !isDataLoaded) {
-      const timer = setTimeout(() => {
-        setShowTroubleshooting(true);
-      }, 5000); // 5 seconds
-      return () => clearTimeout(timer);
-    } else {
-      setShowTroubleshooting(false);
-    }
+    if (!user || isDataLoaded) return;
+    const timer = setTimeout(() => {
+      setTroubleshootTimedOut(true);
+    }, 4000);
+    return () => clearTimeout(timer);
   }, [user, isDataLoaded]);
 
   // Theme + routines
@@ -143,18 +71,39 @@ export default function App() {
     applyGymScheduleForDate(activeDate);
   }, [theme, activeDate, applyRoutinesToDate, applyGymScheduleForDate]);
 
+  // Admin and Deep Link Route Listener (/admin or #admin)
+  useEffect(() => {
+    const handleUrlRoute = () => {
+      const path = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
+      if (path === '/admin' || hash === '#admin') {
+        setPage('admin');
+      }
+    };
+    handleUrlRoute();
+    window.addEventListener('popstate', handleUrlRoute);
+    window.addEventListener('hashchange', handleUrlRoute);
+    return () => {
+      window.removeEventListener('popstate', handleUrlRoute);
+      window.removeEventListener('hashchange', handleUrlRoute);
+    };
+  }, [setPage]);
+
   // Auth Listener
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       try {
+        const currentUser = useStore.getState().user;
         if (u) {
-          setUser(u);
+          const tokenResult = await u.getIdTokenResult().catch(() => null);
+          const customClaims = tokenResult?.claims || {};
+          setUser({ ...u, customClaims });
           await loadUserData(u.uid);
-        } else {
+        } else if (!currentUser?.isGuest) {
           setUser(null);
         }
       } catch (err) {
-        console.error('[Neural OS] Auth Handshake Failure:', err);
+        console.error('[TaskBar OS] Auth Handshake:', err);
       } finally {
         setAuthLoading(false);
       }
@@ -193,13 +142,13 @@ export default function App() {
 
     // Surgical Sync: Trigger on data change or every hour
     const performSync = async () => {
-      const granted = await NotificationService.requestPermissions();
-      if (granted) {
-        useStore.getState().syncMissionNotifications().catch(err => 
-          console.error('[Neural OS] Mission Sync Failed:', err)
-        );
-      } else {
-        console.warn('[Neural OS] Notification permission denied.');
+      try {
+        const granted = await NotificationService.requestPermissions();
+        if (granted) {
+          useStore.getState().syncMissionNotifications().catch(() => {});
+        }
+      } catch (_err) {
+        // Notification permission or sync optional fallback
       }
     };
 
@@ -304,7 +253,7 @@ export default function App() {
   // Splash / Auth Loading screen
   if (authLoading || (user && !isDataLoaded)) {
     const isError = !!syncError;
-    const activeTroubleshoot = showTroubleshooting || isError;
+    const activeTroubleshoot = troubleshootTimedOut || isError;
 
     return (
       <div style={{ 
@@ -431,27 +380,22 @@ export default function App() {
           <Topbar onMobileMenuClick={() => setMobileOpen(true)} onSearchOpen={() => setSearchOpen(true)} />
         )}
         <div className="page-content">
-          <PageComponent />
+          <ErrorBoundary>
+            <PageComponent />
+          </ErrorBoundary>
         </div>
         {!focusMode && <BottomNav />}
+        {!focusMode && <QuickLogBar />}
       </div>
 
-      {/* FAB */}
-      {!focusMode && currentPage !== 'gym' && (
-        <motion.button 
-          className="fab" 
-          onClick={() => { triggerHaptic(); setFabTaskOpen(true); }} 
-          whileHover={{ scale: 1.08 }} 
-          whileTap={{ scale: 0.94 }} 
-          title="New Task (Ctrl+N)"
-        >
-          <Plus size={22} strokeWidth={2.5} />
-        </motion.button>
-      )}
-
-      {/* Search overlay */}
+      {/* Command Palette (Ctrl+K) */}
       <AnimatePresence>
-        {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
+        {searchOpen && (
+          <CommandPalette 
+            onClose={() => setSearchOpen(false)} 
+            onOpenCreateTask={() => setFabTaskOpen(true)}
+          />
+        )}
       </AnimatePresence>
 
       {/* FAB quick add modal */}

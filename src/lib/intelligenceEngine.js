@@ -18,7 +18,7 @@ const todayStr = () => format(new Date(), 'yyyy-MM-dd');
 export function getDailySnapshot(state, dateKey = todayStr()) {
   const { 
     tasks = {}, workouts = {}, dietEntries = {}, waterCompletions = {}, 
-    waterSchedule = [], dietGoals = {}, walkingLogs = {}
+    waterSchedule = [], dietGoals = {}, walkingLogs = {}, habits = [], habitLogs = {}
   } = state;
 
   // 1. WORKOUT METRICS & CENTRAL CALORIE EXPENDITURE
@@ -173,6 +173,13 @@ export function getDailySnapshot(state, dateKey = todayStr()) {
       total: totalTasks,
       completed: completedTasks,
       rate: taskCompletionRate
+    },
+    habits: {
+      total: (habits || []).filter(h => !h.archived).length,
+      completed: (habits || []).filter(h => !h.archived && habitLogs[dateKey]?.[h.id]).length,
+      rate: (habits || []).filter(h => !h.archived).length > 0
+        ? Math.round(((habits || []).filter(h => !h.archived && habitLogs[dateKey]?.[h.id]).length / (habits || []).filter(h => !h.archived).length) * 100)
+        : 100
     },
     focus: {
       minutes: focusMinutes,
@@ -423,12 +430,13 @@ export function calculateCorrelationData(state, daysCount = 14) {
  * @returns {Object} Streaks for Workout, Diet, Routines, and Focus
  */
 export function getGlobalConsistencyStreaks(state) {
-  const { gamification = {}, workouts = {}, dietEntries = {}, tasks = {} } = state;
+  const { gamification = {}, workouts = {}, dietEntries = {}, tasks = {}, habits = [], habitLogs = {} } = state;
 
   const baseDate = new Date();
   let workoutStreak = 0;
   let dietStreak = 0;
   let routineStreak = 0;
+  let habitsStreak = 0;
 
   // Calculate Workout Streak
   for (let i = 0; i < 60; i++) {
@@ -464,10 +472,25 @@ export function getGlobalConsistencyStreaks(state) {
     }
   }
 
+  // Calculate Habit Streak
+  const activeHabits = (habits || []).filter(h => !h.archived);
+  if (activeHabits.length > 0) {
+    for (let i = 0; i < 60; i++) {
+      const dStr = format(subDays(baseDate, i), 'yyyy-MM-dd');
+      const done = activeHabits.filter(h => habitLogs[dStr]?.[h.id]).length;
+      if (done > 0) {
+        habitsStreak++;
+      } else if (i > 0) {
+        break;
+      }
+    }
+  }
+
   return {
     workoutStreak,
     dietStreak,
     routineStreak,
-    overallStreak: gamification.streak || Math.max(workoutStreak, dietStreak, routineStreak)
+    habitsStreak,
+    overallStreak: gamification.streak || Math.max(workoutStreak, dietStreak, routineStreak, habitsStreak)
   };
 }

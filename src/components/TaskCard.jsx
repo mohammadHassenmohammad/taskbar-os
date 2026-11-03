@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Check, Edit2, Trash2, Copy, MoveRight, Clock, GripVertical, Play, Square, Target } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Check, Edit2, Trash2, Copy, MoveRight, Clock, GripVertical, Play, Square, Target, CheckSquare, ChevronDown, ChevronUp } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -33,29 +33,36 @@ const formatTime = (seconds) => {
 export default function TaskCard({ task, date, onEdit, isReadOnly = false, compact = false }) {
   const { 
     deleteTask, duplicateTask, postponeTask, setTaskReminder,
-    activeTimer, startTimer, stopTimer, toggleTaskComplete 
+    activeTimer, startTimer, stopTimer, toggleTaskComplete, updateTask 
   } = useStore();
   
   const [isDeleting, setIsDeleting] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showSubtasks, setShowSubtasks] = useState(false);
   const [tempTime, setTempTime] = useState(task.reminderAt || '');
 
   const isActive = activeTimer?.id === task.id;
-  const isOtherActive = activeTimer && activeTimer.id !== task.id;
+
+  const subtasksList = task.subtasks || [];
+  const completedSubtasksCount = subtasksList.filter(s => s.completed).length;
+
+  const handleToggleSubtask = (stId, e) => {
+    e.stopPropagation();
+    const updated = subtasksList.map(s => s.id === stId ? { ...s, completed: !s.completed } : s);
+    const newCompletedCount = updated.filter(s => s.completed).length;
+    const pct = updated.length > 0 ? Math.round((newCompletedCount / updated.length) * 100) : task.progress;
+    updateTask(task.id, date, { subtasks: updated, progress: pct });
+  };
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const isCurrentDay = date === todayStr;
 
   useEffect(() => {
-    let interval;
-    if (isActive) {
-      interval = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - activeTimer.startTime) / 1000));
-      }, 1000);
-    } else {
-      setElapsed(0);
-    }
+    if (!isActive) return;
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - activeTimer.startTime) / 1000));
+    }, 1000);
     return () => clearInterval(interval);
   }, [isActive, activeTimer]);
 
@@ -73,19 +80,6 @@ export default function TaskCard({ task, date, onEdit, isReadOnly = false, compa
     transition,
     opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 999 : undefined,
-  };
-
-  const handleDelete = () => {
-    setIsDeleting(true);
-    setTimeout(() => {
-      deleteTask(task.id, date);
-      toast.success('Task deleted');
-    }, 200);
-  };
-
-  const handleDuplicate = () => {
-    duplicateTask(task.id, date);
-    toast.success('Task duplicated!');
   };
 
   const catClass = CATEGORY_CLASS[task.category] || 'tag-other';
@@ -228,7 +222,63 @@ export default function TaskCard({ task, date, onEdit, isReadOnly = false, compa
                  </span>
               </div>
             )}
+
+            {subtasksList.length > 0 && (
+              <div className="task-meta-item">
+                <div className="task-field-label">Checklist</div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => setShowSubtasks(!showSubtasks)}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    background: completedSubtasksCount === subtasksList.length ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.08)',
+                    color: completedSubtasksCount === subtasksList.length ? '#10b981' : 'var(--accent-primary)',
+                    padding: '3px 8px',
+                    borderRadius: 6
+                  }}
+                >
+                  <CheckSquare size={12} />
+                  <span>{completedSubtasksCount}/{subtasksList.length} subtasks</span>
+                  {showSubtasks ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Subtasks Accordion */}
+          {showSubtasks && subtasksList.length > 0 && (
+            <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-elevated)', borderRadius: 10, border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {subtasksList.map(st => (
+                <div 
+                  key={st.id}
+                  onClick={(e) => handleToggleSubtask(st.id, e)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 6px', borderRadius: 6 }}
+                >
+                  <div style={{
+                    width: 16, height: 16, borderRadius: 4,
+                    border: st.completed ? 'none' : '1.5px solid var(--border-default)',
+                    background: st.completed ? 'var(--color-success)' : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'white', fontSize: 10, flexShrink: 0
+                  }}>
+                    {st.completed ? '✓' : ''}
+                  </div>
+                  <span style={{
+                    fontSize: 12,
+                    color: st.completed ? 'var(--text-muted)' : 'var(--text-primary)',
+                    textDecoration: st.completed ? 'line-through' : 'none'
+                  }}>
+                    {st.title}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Right Section: Operational Clusters */}

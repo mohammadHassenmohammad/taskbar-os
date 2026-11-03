@@ -8,7 +8,6 @@ const PRIORITIES = ['Low', 'Medium', 'High'];
 const PRIORITY_COLORS = { Low: 'var(--priority-low)', Medium: 'var(--priority-medium)', High: 'var(--priority-high)' };
 
 const WEEKDAYS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const WEEKDAYS_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function RoutineModal({ routine, onClose }) {
   const { addRoutine, updateRoutine } = useStore();
@@ -124,7 +123,7 @@ function RoutineModal({ routine, onClose }) {
 }
 
 export default function Routines() {
-  const { routines, toggleRoutine, deleteRoutine, getRoutineStats } = useStore();
+  const { routines, toggleRoutine, deleteRoutine, getRoutineStats, addRoutine } = useStore();
   const [showModal, setShowModal] = useState(false);
   const [editRoutine, setEditRoutine] = useState(null);
 
@@ -139,20 +138,20 @@ export default function Routines() {
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 900, color: 'var(--text-primary)', letterSpacing: -0.8 }}>🔁 Routine Protocols</h1>
-          <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>Automated mission initialization for peak operational consistency.</p>
+          <h1 style={{ fontSize: 24, fontWeight: 900, color: 'var(--text-primary)', letterSpacing: -0.8 }}>Routines</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>Automated recurring tasks scheduled for daily consistency.</p>
         </div>
         <button className="btn btn-primary" onClick={() => { setEditRoutine(null); setShowModal(true); }}>
-          <Plus size={16} /> New Protocol
+          <Plus size={16} /> New Routine
         </button>
       </motion.div>
 
       {/* Stats */}
       <div className="grid-3">
         {[
-          { label: 'Active Protocols', value: activeProtocols, color: 'var(--accent-primary)', icon: <Repeat size={20} /> },
-          { label: 'Efficiency Streak', value: routines.filter(r => r.enabled).length > 0 ? 'Optimal' : 'Pending', color: 'var(--color-success)', icon: <ToggleRight size={20} /> },
-          { label: 'Deployment Count', value: deploymentRecord, color: 'var(--accent-secondary)', icon: <Info size={20} /> },
+          { label: 'Active Routines', value: activeProtocols, color: 'var(--accent-primary)', icon: <Repeat size={20} /> },
+          { label: 'Current Streak', value: routines.filter(r => r.enabled).length > 0 ? 'Active' : 'Paused', color: 'var(--color-success)', icon: <ToggleRight size={20} /> },
+          { label: 'Completed Today', value: deploymentRecord, color: 'var(--accent-secondary)', icon: <Info size={20} /> },
         ].map((s, i) => (
           <motion.div key={s.label} className="stat-card" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
             style={{ padding: '20px 24px', background: 'var(--bg-card)', border: '1.5px solid var(--border-subtle)', borderRadius: 'var(--radius-xl)' }}>
@@ -169,10 +168,10 @@ export default function Routines() {
       {routines.length === 0 ? (
         <div className="empty-state" style={{ padding: '80px 40px', background: 'var(--bg-card)', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-xl)' }}>
           <div className="empty-state-icon" style={{ fontSize: 48, marginBottom: 16 }}>🔁</div>
-          <div className="empty-state-title" style={{ fontSize: 18, fontWeight: 900 }}>No routine protocols initialized</div>
-          <div className="empty-state-sub" style={{ maxWidth: 400, margin: '12px auto', lineHeight: 1.6 }}>Add recurring missions like physical training, neural loading, or tactical reviews — they'll initialize automatically on your chosen days.</div>
+          <div className="empty-state-title" style={{ fontSize: 18, fontWeight: 900 }}>No recurring routines configured</div>
+          <div className="empty-state-sub" style={{ maxWidth: 400, margin: '12px auto', lineHeight: 1.6 }}>Add recurring tasks like morning planning, fitness sessions, or weekly reviews to appear automatically on selected days.</div>
           <button className="btn btn-primary" style={{ marginTop: 24 }} onClick={() => setShowModal(true)}>
-            <Plus size={16} /> Initialize First Protocol
+            <Plus size={16} /> Create First Routine
           </button>
         </div>
       ) : (

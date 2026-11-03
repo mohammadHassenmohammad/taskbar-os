@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Save } from 'lucide-react';
 import { useStore, CATEGORIES } from '../store/useStore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,7 +11,18 @@ export default function TaskModal({ isOpen, onClose, task = null, date }) {
   const { addTask, updateTask } = useStore();
   const isEdit = Boolean(task);
 
-  const [form, setForm] = useState({
+  const [prevTask, setPrevTask] = useState(task);
+  const [subtaskInput, setSubtaskInput] = useState('');
+  const [form, setForm] = useState(() => task ? {
+    title: task.title || '',
+    description: task.description || '',
+    priority: task.priority || 'Medium',
+    category: task.category || 'Work',
+    dueTime: task.dueTime || '',
+    progress: task.progress || 0,
+    estimatedTime: task.estimatedTime || 0,
+    subtasks: task.subtasks || [],
+  } : {
     title: '',
     description: '',
     priority: 'Medium',
@@ -19,23 +30,22 @@ export default function TaskModal({ isOpen, onClose, task = null, date }) {
     dueTime: '',
     progress: 0,
     estimatedTime: 0,
+    subtasks: [],
   });
 
-  useEffect(() => {
-    if (task) {
-      setForm({
-        title: task.title || '',
-        description: task.description || '',
-        priority: task.priority || 'Medium',
-        category: task.category || 'Work',
-        dueTime: task.dueTime || '',
-        progress: task.progress || 0,
-        estimatedTime: task.estimatedTime || 0,
-      });
-    } else {
-      setForm({ title: '', description: '', priority: 'Medium', category: 'Work', dueTime: '', progress: 0, estimatedTime: 0 });
-    }
-  }, [task, isOpen]);
+  if (task !== prevTask) {
+    setPrevTask(task);
+    setForm(task ? {
+      title: task.title || '',
+      description: task.description || '',
+      priority: task.priority || 'Medium',
+      category: task.category || 'Work',
+      dueTime: task.dueTime || '',
+      progress: task.progress || 0,
+      estimatedTime: task.estimatedTime || 0,
+      subtasks: task.subtasks || [],
+    } : { title: '', description: '', priority: 'Medium', category: 'Work', dueTime: '', progress: 0, estimatedTime: 0, subtasks: [] });
+  }
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -100,6 +110,82 @@ export default function TaskModal({ isOpen, onClose, task = null, date }) {
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
                   />
+                </div>
+
+                {/* Subtasks */}
+                <div className="form-group">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <label className="form-label" style={{ margin: 0 }}>Subtasks & Action Items ({(form.subtasks || []).length})</label>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Add subtask and press Enter..."
+                      value={subtaskInput}
+                      onChange={(e) => setSubtaskInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (subtaskInput.trim()) {
+                            setForm({
+                              ...form,
+                              subtasks: [...(form.subtasks || []), { id: `st_${Date.now()}`, title: subtaskInput.trim(), completed: false }]
+                            });
+                            setSubtaskInput('');
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        if (subtaskInput.trim()) {
+                          setForm({
+                            ...form,
+                            subtasks: [...(form.subtasks || []), { id: `st_${Date.now()}`, title: subtaskInput.trim(), completed: false }]
+                          });
+                          setSubtaskInput('');
+                        }
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {(form.subtasks || []).length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto' }}>
+                      {form.subtasks.map((st, idx) => (
+                        <div key={st.id || idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1, minWidth: 0, margin: 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={st.completed}
+                              onChange={(e) => {
+                                const updated = [...form.subtasks];
+                                updated[idx] = { ...st, completed: e.target.checked };
+                                setForm({ ...form, subtasks: updated });
+                              }}
+                              style={{ accentColor: 'var(--accent-primary)' }}
+                            />
+                            <span style={{ fontSize: 13, textDecoration: st.completed ? 'line-through' : 'none', color: st.completed ? 'var(--text-muted)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {st.title}
+                            </span>
+                          </label>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-icon btn-xs text-danger"
+                            onClick={() => {
+                              const updated = form.subtasks.filter((_, i) => i !== idx);
+                              setForm({ ...form, subtasks: updated });
+                            }}
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Row: Priority + Category */}

@@ -1,13 +1,13 @@
 import { useMemo } from 'react';
-import { useStore, CATEGORIES } from '../store/useStore'; // Sync Heartbeat: 1778478600
-import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { useStore } from '../store/useStore';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from 'date-fns';
 import { motion } from 'framer-motion';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   LineChart, Line, PieChart, Pie, Cell 
 } from 'recharts';
 import { 
-  Download, Calendar, TrendingUp, Award, AlertCircle, Lightbulb, 
+  Download, TrendingUp, Award, AlertCircle, Lightbulb, 
   Activity, Zap, Target, Flame, Trophy, Shield, Moon 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -54,77 +54,47 @@ const formatFocusTime = (seconds) => {
   return `${m}m`;
 };
 
-export default function MonthlyReport() {
-  const { tasks, submittedDays, waterSchedule, waterCompletions, workouts, sleepLogs, energyLogs } = useStore();
-  const now = new Date();
-  const monthStart = startOfMonth(now);
-  const monthEnd = endOfMonth(now);
+import { 
+  computeProductivityMetrics, 
+  computeFitnessMetrics, 
+  computeNutritionMetrics, 
+  computeLifestyleMetrics 
+} from '../lib/analyticsService';
 
-  const days = useMemo(() => eachDayOfInterval({ start: monthStart, end: monthEnd }), [monthStart, monthEnd]);
+export default function MonthlyReport() {
+  const { tasks, waterSchedule, waterCompletions, workouts, dietEntries, sleepLogs, energyLogs, dietGoals = {} } = useStore();
+  const now = useMemo(() => new Date(), []);
+  const days = useMemo(() => {
+    return eachDayOfInterval({ start: startOfMonth(now), end: endOfMonth(now) });
+  }, [now]);
 
   const reportData = useMemo(() => {
-    let totalTasks = 0, completedTasks = 0, totalFocus = 0;
-    let waterTotal = 0, waterDone = 0;
-    let volumeTotal = 0, tonnageTotal = 0, workoutDays = 0;
-    let sleepQualTotal = 0, sleepDays = 0;
-    let energyStability = 0;
-    const catMap = {};
-    const byWeek = {};
-
     const todayStr = format(new Date(), 'yyyy-MM-dd');
-    days.forEach((d) => {
-      const key = format(d, 'yyyy-MM-dd');
-      if (key > todayStr) return; // Future missions are not part of current debrief
-      
-      // Tasks
-      const dt = tasks[key] || [];
-      totalTasks += dt.length;
-      const done = dt.filter((t) => t.completed).length;
-      completedTasks += done;
-      totalFocus += dt.reduce((acc, t) => acc + (t.timeTaken || 0), 0);
-      const dayWorkouts = workouts[key];
+    const validDateKeys = days
+      .map(d => format(d, 'yyyy-MM-dd'))
+      .filter(k => k <= todayStr);
 
-      dt.forEach(t => {
-        catMap[t.category] = (catMap[t.category] || 0) + 1;
-      });
+    const prod = computeProductivityMetrics(tasks, validDateKeys);
+    const fit = computeFitnessMetrics(workouts, validDateKeys);
+    const nut = computeNutritionMetrics(dietEntries, waterCompletions, waterSchedule, dietGoals, validDateKeys);
+    const life = computeLifestyleMetrics(sleepLogs, energyLogs, validDateKeys);
 
-      // Water
-      waterTotal += waterSchedule.length;
-      waterDone += Object.keys(waterCompletions[key] || {}).length;
-
-      // Fitness OS Integration
-      if (dayWorkouts && dayWorkouts.exercises) {
-        workoutDays++;
-        dayWorkouts.exercises.forEach(ex => {
-          (ex.sets || []).forEach(s => {
-             if (s.completed) {
-                volumeTotal++;
-                const w = parseFloat(s.weight) || (ex.muscle === 'Cardio' ? 0 : 75); 
-                tonnageTotal += (w * (parseInt(s.reps) || 0));
-             }
-          });
-        });
-      }
-
-      // Bio-Hacking
-      const log = sleepLogs[key];
-      if (log) {
-        sleepQualTotal += log.quality;
-        sleepDays++;
-      }
-      
-      const eLogs = energyLogs[key] || [];
-      if (eLogs.length > 0) energyStability += 1;
-
+    // Group weekly flow
+    const byWeek = {};
+    validDateKeys.forEach(key => {
+      const d = parseISO ? new Date(key + 'T00:00:00') : new Date(key);
       const weekNum = Math.ceil(d.getDate() / 7);
       const wk = `Week ${weekNum}`;
       if (!byWeek[wk]) byWeek[wk] = { label: wk, tasks: 0, completed: 0, volume: 0 };
-      byWeek[wk].tasks += dt.length;
-      byWeek[wk].completed += done;
       
-      if (dayWorkouts && dayWorkouts.exercises) {
-        dayWorkouts.exercises.forEach(ex => {
-           byWeek[wk].volume += (ex.sets || []).filter(s => s.completed).length;
+      const dayTasks = tasks[key] || [];
+      byWeek[wk].tasks += dayTasks.length;
+      byWeek[wk].completed += dayTasks.filter(t => t.completed).length;
+
+      const dayWorkout = workouts[key];
+      if (dayWorkout && dayWorkout.exercises) {
+        dayWorkout.exercises.forEach(ex => {
+          byWeek[wk].volume += (ex.sets || []).filter(s => s.completed).length;
         });
       }
     });
@@ -134,56 +104,66 @@ export default function MonthlyReport() {
       score: w.tasks > 0 ? Math.round((w.completed / w.tasks) * 100) : 0,
     }));
 
-    const categoryData = Object.entries(catMap).map(([name, value]) => ({ name, value }));
-    const overallRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-    const waterRate = waterTotal > 0 ? Math.round((waterDone / waterTotal) * 100) : 0;
-    const fitnessFrequency = (workoutDays / (days.length / 7)).toFixed(1);
+    const categoryData = Object.entries(prod.categoryMap).map(([name, value]) => ({ name, value }));
     const bestWeek = weeklyData.reduce((b, w) => w.score > b.score ? w : b, { score: 0 });
-    const avgSleepQuality = sleepDays > 0 ? sleepQualTotal / sleepDays : 0;
-    const energyScore = days.length > 0 ? (energyStability / days.length) * 100 : 0;
 
     return { 
-      totalTasks, completedTasks, weeklyData, overallRate, bestWeek: bestWeek.score > 0 ? bestWeek : null, 
-      totalFocus, waterRate, waterDone, volumeTotal, tonnageTotal, workoutDays, fitnessFrequency, categoryData,
-      avgSleepQuality, energyScore
+      totalTasks: prod.createdCount,
+      completedTasks: prod.completedCount,
+      weeklyData,
+      overallRate: prod.completionRate,
+      bestWeek: bestWeek.score > 0 ? bestWeek : null, 
+      totalFocus: prod.totalTimeInvestedSec,
+      waterRate: nut.waterAdherenceRate,
+      waterDone: nut.completedWaterSlots,
+      volumeTotal: fit.completedSets,
+      tonnageTotal: fit.totalExternalVolumeKg,
+      workoutDays: fit.workoutsCompleted,
+      fitnessFrequency: fit.trainingFrequencyPerWeek,
+      categoryData,
+      avgSleepQuality: life.avgSleepQuality,
+      energyScore: life.energyStabilityIndex,
+      avgDietCals: nut.avgCalories,
+      avgDietProt: nut.avgProtein,
+      dietDaysCount: nut.loggedDaysCount
     };
-  }, [tasks, submittedDays, days, waterSchedule, waterCompletions, workouts]);
+  }, [tasks, days, waterSchedule, waterCompletions, workouts, dietEntries, sleepLogs, energyLogs, dietGoals]);
 
   const insights = useMemo(() => generateInsights(reportData), [reportData]);
 
   const handleDownload = () => {
     const lines = [
-      `TASKBAR OS - GRAND STRATEGIC DEBRIEF`,
+      `TASKBAR OS — MONTHLY PERFORMANCE REPORT`,
       `Month: ${format(now, 'MMMM yyyy')}`,
       `Generated: ${format(now, 'PPpp')}`,
       ``,
-      `MISSION SUMMARY`,
+      `MONTHLY SUMMARY`,
       `Total Tasks: ${reportData.totalTasks}`,
-      `Completed: ${reportData.completedTasks}`,
-      `Operational Rate: ${reportData.overallRate}%`,
+      `Completed Tasks: ${reportData.completedTasks}`,
+      `Completion Rate: ${reportData.overallRate}%`,
       `Total Focus Time: ${formatFocusTime(reportData.totalFocus)}`,
       ``,
-      `PHYSICAL PERFORMANCE`,
-      `Total Tonnage (kg): ${reportData.tonnageTotal.toLocaleString()}`,
-      `Total Sets: ${reportData.volumeTotal}`,
+      `PHYSICAL & WELLNESS PERFORMANCE`,
+      `Total External Weight Volume (kg): ${reportData.tonnageTotal.toLocaleString()}`,
+      `Total Sets Completed: ${reportData.volumeTotal}`,
       `Workout Frequency: ${reportData.fitnessFrequency} sessions/week`,
       `Hydration Consistency: ${reportData.waterRate}%`,
       ``,
-      `BIO-INTELLIGENCE`,
+      `RECOVERY & SLEEP TELEMETRY`,
       `Average Sleep Quality: ${reportData.avgSleepQuality.toFixed(1)}/10`,
       `Energy Stability Index: ${reportData.energyScore.toFixed(0)}%`,
       ``,
-      `AI OPERATIVE INSIGHTS`,
+      `MONTHLY INSIGHTS & RECOMMENDATIONS`,
       ...insights.map((ins) => `• ${ins.text}`),
     ];
     const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `grand-debrief-${format(now, 'yyyy-MM')}.txt`;
+    a.download = `monthly-report-${format(now, 'yyyy-MM')}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success('Grand Debrief Downloaded!');
+    toast.success('Monthly Report Exported!');
   };
 
   return (
@@ -193,21 +173,21 @@ export default function MonthlyReport() {
         className="report-header"
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px' }}>
         <div>
-          <h1 style={{ fontSize: 26, fontWeight: 900, color: 'var(--text-primary)', letterSpacing: -1 }}>📊 Grand Strategic Debrief</h1>
-          <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>{format(now, 'MMMM yyyy')} · Comprehensive Operational Analysis</p>
+          <h1 style={{ fontSize: 26, fontWeight: 900, color: 'var(--text-primary)', letterSpacing: -1 }}>Monthly Report</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>{format(now, 'MMMM yyyy')} · Comprehensive Performance Analysis</p>
         </div>
         <button className="btn btn-primary" onClick={handleDownload} style={{ borderRadius: 12, padding: '10px 20px', whiteSpace: 'nowrap' }}>
-          <Download size={16} /> Download Intelligence
+          <Download size={16} /> Export Report
         </button>
       </motion.div>
 
       {/* Primary KPI Grid */}
       <div className="grid-4" style={{ gap: 16 }}>
         {[
-          { label: 'Operational Rate', value: `${reportData.overallRate}%`, icon: TrendingUp, color: 'var(--accent-primary)', sub: 'Completion' },
-          { label: 'Fitness Frequency', value: `${reportData.fitnessFrequency}x`, icon: Activity, color: 'var(--color-success)', sub: 'Per Week' },
-          { label: 'Total Volume', value: reportData.volumeTotal, icon: Zap, color: 'var(--color-warning)', sub: 'Sets Completed' },
-          { label: 'Neural Focus', value: formatFocusTime(reportData.totalFocus), icon: Target, color: 'var(--accent-secondary)', sub: 'Focused Time' },
+          { label: 'Completion Rate', value: `${reportData.overallRate}%`, icon: TrendingUp, color: 'var(--accent-primary)', sub: 'Tasks Completed' },
+          { label: 'Training Frequency', value: `${reportData.fitnessFrequency}x`, icon: Activity, color: 'var(--color-success)', sub: 'Sessions / Week' },
+          { label: 'Total Volume', value: reportData.volumeTotal, icon: Zap, color: 'var(--color-warning)', sub: 'Sets Executed' },
+          { label: 'Focus Time', value: formatFocusTime(reportData.totalFocus), icon: Target, color: 'var(--accent-secondary)', sub: 'Focused Work' },
         ].map((s, i) => (
           <motion.div className="stat-card" key={s.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
             style={{ padding: '24px', background: 'var(--bg-card)', border: '1.5px solid var(--border-subtle)', borderRadius: 'var(--radius-xl)' }}>
@@ -222,12 +202,12 @@ export default function MonthlyReport() {
       </div>
 
       <div className="grid-2" style={{ gap: 20 }}>
-        {/* Weekly Operational Flow */}
+        {/* Weekly Activity */}
         <motion.div className="card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
           style={{ padding: 24, borderRadius: 'var(--radius-xl)' }}>
           <div style={{ fontSize: 16, fontWeight: 900, marginBottom: 24, display: 'flex', alignItems: 'center', gap: 10 }}>
             <TrendingUp size={18} color="var(--accent-primary)" />
-            Weekly Operational Flow
+            Weekly Activity
           </div>
           <div style={{ width: '100%', height: 240, minWidth: 0 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -245,12 +225,12 @@ export default function MonthlyReport() {
           </div>
         </motion.div>
 
-        {/* Tactical Classification */}
+        {/* Task Categories */}
         <motion.div className="card" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
           style={{ padding: 24, borderRadius: 'var(--radius-xl)' }}>
           <div style={{ fontSize: 16, fontWeight: 900, marginBottom: 24, display: 'flex', alignItems: 'center', gap: 10 }}>
             <Shield size={18} color="var(--accent-secondary)" />
-            Tactical Classification
+            Task Categories
           </div>
           <div className="report-classification" style={{ display: 'flex', height: 240, alignItems: 'center', width: '100%' }}>
             <div style={{ flex: 1.5, height: '100%', minHeight: 200, width: '100%' }}>

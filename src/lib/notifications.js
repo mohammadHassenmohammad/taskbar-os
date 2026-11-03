@@ -15,16 +15,22 @@ export const NotificationService = {
             visibility: 1, // 1 = Public
             vibration: true,
           });
-        } catch (err) {
-          console.warn('Channel creation failed or not supported', err);
+        } catch (_err) {
+          // Channel creation fallback
         }
         return true;
       }
-    } catch (e) {
+    } catch (_e) {
       // Web fallback
       if ('Notification' in window) {
-        const webPerm = await Notification.requestPermission();
-        return webPerm === 'granted';
+        if (Notification.permission === 'granted') return true;
+        if (Notification.permission === 'denied') return false;
+        try {
+          const webPerm = await Notification.requestPermission();
+          return webPerm === 'granted';
+        } catch (_permErr) {
+          return false;
+        }
       }
     }
     return false;
@@ -38,6 +44,7 @@ export const NotificationService = {
         body,
         id: typeof id === 'number' ? id : Math.floor(Math.random() * 1000000),
         channelId: 'tactical-alerts',
+        sound,
         extra
       };
       
@@ -46,7 +53,7 @@ export const NotificationService = {
       }
 
       await LocalNotifications.schedule({ notifications: [notification] });
-    } catch (e) {
+    } catch (_e) {
       // Web fallback (one-time timeout if the tab is open)
       const now = new Date();
       const delay = date ? date.getTime() - now.getTime() : 0;

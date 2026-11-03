@@ -5,13 +5,22 @@ import { format } from 'date-fns';
 const PAGE_TITLES = {
   dashboard: 'Dashboard', today: "Today's Tasks", calendar: 'Calendar',
   analytics: 'Analytics', focus: 'Focus Mode', report: 'Monthly Report',
-  settings: 'Settings', archive: 'Archive', ai: 'AI Insights',
+  settings: 'Settings', archive: 'Archive', ai: 'Neural Insights',
   habits: 'Habits Tracker', routines: 'Daily Routines', gym: 'Fitness OS',
+  diet: 'Diet OS', guide: 'User Manual & Architecture',
+  admin: 'Admin Console',
 };
 
 export default function Topbar({ onMobileMenuClick, onSearchOpen }) {
-  const { theme, toggleTheme, currentPage, gamification, setPage } = useStore();
+  const { theme, toggleTheme, currentPage, gamification, setPage, user, isDataLoaded, syncLocked } = useStore();
   const today = format(new Date(), 'EEEE, MMMM d');
+
+  const syncStatusLabel = user?.isGuest 
+    ? 'Local Mode' 
+    : (isDataLoaded && !syncLocked ? 'Cloud Synced' : 'Offline / Local Cache');
+  const syncStatusColor = user?.isGuest 
+    ? 'var(--accent-secondary)' 
+    : (isDataLoaded && !syncLocked ? 'var(--color-success)' : 'var(--color-warning)');
 
   return (
     <div className="topbar">
@@ -23,6 +32,10 @@ export default function Topbar({ onMobileMenuClick, onSearchOpen }) {
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{today}</div>
       </div>
       <div className="topbar-actions">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', fontSize: 11, fontWeight: 700, color: syncStatusColor }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: syncStatusColor }} />
+          <span>{syncStatusLabel}</span>
+        </div>
         <button className="btn btn-ghost btn-icon haptic-touch" onClick={() => window.location.reload()} title="Reload System">
           <RefreshCw size={16} />
         </button>

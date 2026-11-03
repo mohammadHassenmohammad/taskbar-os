@@ -1,15 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
-import { useStore, MUSCLE_GROUPS, WORKOUT_TEMPLATES, EXERCISE_LIBRARY_DEFAULT, DEFAULT_SCHEDULE } from '../store/useStore';
+import { useState, useEffect } from 'react';
+import { useStore, MUSCLE_GROUPS, calculateLevel } from '../store/useStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Calendar, BookOpen, Plus, Trash2,
   ChevronRight, ChevronLeft, X, Play, TrendingUp, Settings2,
-  RotateCcw, HelpCircle, Target, Hash, Zap, Search, Activity, Award, Check,
-  TrendingDown, Info, Square, Sparkles
+  RotateCcw, Target, Hash, Zap, Search, Activity, Award, Check,
+  Info, Square, Sparkles, Trophy, Dumbbell
 } from 'lucide-react';
 import { format, addDays, subDays } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import Confetti from 'react-confetti';
+import { estimateStrengthWorkoutCalories } from '../lib/calorieBurnService';
 
 // ─── Motivational Data ───────────────────────────────────────────────────────
 const MUSCLE_COLORS = {
@@ -38,9 +39,20 @@ function getPrimaryColor(exercises = []) {
 }
 
 const RestTimer = ({ restTimer, stopRestTimer }) => {
+  const { setRestTimer } = useStore();
   if (!restTimer.running && restTimer.timeLeft === 0) return null;
   const pct = restTimer.duration > 0 ? (restTimer.timeLeft / restTimer.duration) * 100 : 0;
   const r = 26, circ = 2 * Math.PI * r;
+
+  const handleAddSec = (sec) => {
+    const newTime = Math.max(0, restTimer.timeLeft + sec);
+    setRestTimer({ timeLeft: newTime, duration: Math.max(restTimer.duration, newTime) });
+  };
+
+  const handleTogglePause = () => {
+    setRestTimer({ running: !restTimer.running });
+  };
+
   return (
     <AnimatePresence>
       <motion.div 
@@ -51,20 +63,19 @@ const RestTimer = ({ restTimer, stopRestTimer }) => {
         transition={{ type: 'spring', damping: 20, stiffness: 150 }}
         style={{
           position: 'fixed', bottom: 30, right: 30, zIndex: 99999,
-          background: 'rgba(15, 17, 26, 0.8)',
+          background: 'rgba(15, 17, 26, 0.9)',
           backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
           color: 'white',
-          padding: '18px 24px', borderRadius: '24px',
-          display: 'flex', alignItems: 'center', gap: 20,
+          padding: '18px 22px', borderRadius: '24px',
+          display: 'flex', alignItems: 'center', gap: 16,
           boxShadow: '0 20px 80px rgba(0, 0, 0, 0.8), 0 0 20px rgba(124, 58, 237, 0.3)',
-          border: '1px solid rgba(255,255,255,0.1)', minWidth: 240,
+          border: '1px solid rgba(255,255,255,0.12)', minWidth: 320,
         }}
       >
-        <div style={{ position: 'relative', width: 64, height: 64, flexShrink: 0 }}>
-          <svg width="64" height="64" style={{ transform: 'rotate(-90deg)' }}>
-            <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="5"/>
-            <motion.circle cx="32" cy="32" r={r} fill="none" stroke="url(#timerGrad)" strokeWidth="5"
+        <div style={{ position: 'relative', width: 60, height: 60, flexShrink: 0 }}>
+          <svg width="60" height="60" style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx="30" cy="30" r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="5"/>
+            <motion.circle cx="30" cy="30" r={r} fill="none" stroke="url(#timerGrad)" strokeWidth="5"
               strokeLinecap="round"
               strokeDasharray={circ}
               animate={{ strokeDashoffset: circ * (1 - pct / 100) }}
@@ -80,22 +91,29 @@ const RestTimer = ({ restTimer, stopRestTimer }) => {
           <motion.div 
             animate={{ scale: [1, 1.05, 1] }}
             transition={{ duration: 1, repeat: Infinity }}
-            style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, fontVariantNumeric: 'tabular-nums', textShadow: '0 0 10px rgba(139, 92, 246, 0.5)' }}>
+            style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900, fontVariantNumeric: 'tabular-nums' }}>
             {restTimer.timeLeft}s
           </motion.div>
         </div>
+        
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 9, fontWeight: 900, opacity: 0.5, textTransform: 'uppercase', letterSpacing: 2, color: '#a78bfa' }}>RECOVERY PROTOCOL</div>
-          <div style={{ fontSize: 28, fontWeight: 950, lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: -1 }}>
+          <div style={{ fontSize: 9, fontWeight: 900, opacity: 0.5, textTransform: 'uppercase', letterSpacing: 1.5, color: '#a78bfa' }}>REST INTERVAL</div>
+          <div style={{ fontSize: 24, fontWeight: 950, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
             {Math.floor(restTimer.timeLeft/60)}:{String(restTimer.timeLeft%60).padStart(2,'0')}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-            <div className="pulse-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }} />
-            <div style={{ fontSize: 10, opacity: 0.6, fontWeight: 700 }}>SYNCHRONIZING...</div>
+          
+          {/* Controls: -15s, Pause, +15s */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+            <button onClick={() => handleAddSec(-15)} style={{ padding: '2px 8px', borderRadius: 8, background: 'rgba(255,255,255,0.08)', color: 'white', border: 'none', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>-15s</button>
+            <button onClick={handleTogglePause} style={{ padding: '2px 8px', borderRadius: 8, background: 'rgba(139,92,246,0.2)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.4)', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
+              {restTimer.running ? 'Pause' : 'Resume'}
+            </button>
+            <button onClick={() => handleAddSec(15)} style={{ padding: '2px 8px', borderRadius: 8, background: 'rgba(255,255,255,0.08)', color: 'white', border: 'none', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>+15s</button>
           </div>
         </div>
-        <button className="btn-close-timer" onClick={stopRestTimer} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'white', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all 0.2s' }}>
-          <X size={18}/>
+
+        <button onClick={stopRestTimer} title="Skip Rest" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: 'white', padding: '6px 12px', fontSize: 11, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>
+          Skip ➔
         </button>
       </motion.div>
     </AnimatePresence>
@@ -104,23 +122,28 @@ const RestTimer = ({ restTimer, stopRestTimer }) => {
 
 export default function Gym() {
   const { 
-    user, authLoading, login, signup, logout, syncFirestore,
     workouts, gymActiveDate, setGymActiveDate, 
     activeGymTab, setActiveGymTab,
-    createWorkout, updateWorkout, completeWorkout,
-    addExerciseToWorkout, removeExerciseFromWorkout,
-    addSet, removeSet, updateSet, toggleSetComplete,
+    completeWorkout,
+    addExerciseToWorkout,
+    toggleSetComplete,
     applyTemplate, gymSchedule, setGymScheduleDay, resetGymSchedule,
     personalRecords, bodyMetrics, logBodyMetrics,
     gamification, exerciseLibrary, resetWorkout, syncLibrary,
     addExerciseToLibrary, updateExerciseInLibrary, removeExerciseFromLibrary,
-    restTimer, startRestTimer, stopRestTimer, tickRestTimer, setRestTimer,
+    restTimer, stopRestTimer, tickRestTimer,
     activeTimer, startTimer, stopTimer, applyGymScheduleForDate,
-    clearActiveTimer
+    clearActiveTimer, dietGoals
   } = useStore();
+
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [summaryData, setSummaryData] = useState(null);
 
   const [showAddExModal, setShowAddExModal] = useState(false);
   const [showLibModal, setShowLibModal] = useState(null); // { mode: 'add'|'edit', ex?: any }
+  const [showExDetailModal, setShowExDetailModal] = useState(null); // exercise object
+  const [showBuilderModal, setShowBuilderModal] = useState(false);
+  const [builderForm, setBuilderForm] = useState({ name: 'Custom Routine', dayDow: 1, exercises: [] });
   const [showScheduleModal, setShowScheduleModal] = useState(null);
   const [localSchedule, setLocalSchedule] = useState(null);
   
@@ -139,15 +162,14 @@ export default function Gym() {
     return `${s}s`;
   };
 
+  const handleNextDay = () => setGymActiveDate(format(addDays(new Date(gymActiveDate), 1), 'yyyy-MM-dd'));
+  const handlePrevDay = () => setGymActiveDate(format(subDays(new Date(gymActiveDate), 1), 'yyyy-MM-dd'));
+
   useEffect(() => {
-    let interval;
-    if (activeTimer?.type === 'exercise') {
-      interval = setInterval(() => {
-        setElapsedGym(Math.floor((Date.now() - activeTimer.startTime) / 1000));
-      }, 1000);
-    } else {
-      setElapsedGym(0);
-    }
+    if (activeTimer?.type !== 'exercise') return;
+    const interval = setInterval(() => {
+      setElapsedGym(Math.floor((Date.now() - activeTimer.startTime) / 1000));
+    }, 1000);
     return () => clearInterval(interval);
   }, [activeTimer]);
 
@@ -157,9 +179,9 @@ export default function Gym() {
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const isToday  = gymActiveDate === todayStr;
+  const hasBlockingTimer = Boolean(activeTimer && activeTimer.type !== 'exercise');
 
   // STALE TIMER AUTO-CLEANUP: Clear timers older than 2 hours to prevent gym lockout
-  const hasBlockingTimer = activeTimer && activeTimer.type !== 'exercise';
   useEffect(() => {
     if (activeTimer && activeTimer.startTime) {
       const age = Date.now() - activeTimer.startTime;
@@ -172,15 +194,12 @@ export default function Gym() {
     }
   }, [activeTimer, clearActiveTimer]);
 
-
   // Update local schedule when modal opens
-  useEffect(() => {
-    if (showScheduleModal !== null) {
-      setLocalSchedule(JSON.parse(JSON.stringify(gymSchedule[showScheduleModal] || { name: '', exercises: [] })));
-    } else {
-      setLocalSchedule(null);
-    }
-  }, [showScheduleModal, gymSchedule]);
+  const [prevScheduleModal, setPrevScheduleModal] = useState(showScheduleModal);
+  if (showScheduleModal !== prevScheduleModal) {
+    setPrevScheduleModal(showScheduleModal);
+    setLocalSchedule(showScheduleModal !== null ? JSON.parse(JSON.stringify(gymSchedule[showScheduleModal] || { name: '', exercises: [] })) : null);
+  }
 
   // Auto-sync library if empty
   useEffect(() => {
@@ -199,11 +218,6 @@ export default function Gym() {
     }
     return () => clearInterval(interval);
   }, [restTimer.running, tickRestTimer]);
-
-  const handleNextDay = () => setGymActiveDate(format(addDays(new Date(gymActiveDate), 1), 'yyyy-MM-dd'));
-  const handlePrevDay = () => setGymActiveDate(format(subDays(new Date(gymActiveDate), 1), 'yyyy-MM-dd'));
-  const handleGoToToday = () => setGymActiveDate(format(new Date(), 'yyyy-MM-dd'));
-
 
   // ─── WORKOUT TAB: Schedule-driven ───────────────────────────────────────────
   const renderWorkoutTab = () => {
@@ -234,21 +248,6 @@ export default function Gym() {
 
     const heroColor = getPrimaryColor(exercises);
 
-    const markAllDone = () => {
-      exercises.forEach((ex) => {
-        const sets = currentWorkout ? ex.sets : Array.from({ length: parseInt(ex.targetSets) || 3 });
-        sets.forEach((_, sIdx) => {
-          if (currentWorkout) {
-            if (!ex.sets[sIdx].completed) toggleSetComplete(gymActiveDate, ex.id, ex.sets[sIdx].id);
-          } else {
-            // First click initializes the workout
-            toggleSetComplete(gymActiveDate, ex.id, 'dummy'); // This will trigger init
-          }
-        });
-      });
-      toast.success('All sets checked! 🔥 Beast mode!');
-    };
-
     const resetAll = () => {
       resetWorkout(gymActiveDate);
     };
@@ -264,9 +263,17 @@ export default function Gym() {
           <div style={{ fontSize: 15, color: 'var(--text-muted)', maxWidth: 360 }}>
             {isToday ? "Today is your rest day. Recovery is part of the grind." : "No workout scheduled for this day."}
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={() => setActiveGymTab('schedule')}>
-            <Settings2 size={14} /> Edit Master Schedule
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => {
+              setBuilderForm({ name: 'Custom Workout', dayDow: dow, exercises: [] });
+              setShowBuilderModal(true);
+            }}>
+              <Plus size={14} /> Build Custom Workout
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setActiveGymTab('schedule')}>
+              <Settings2 size={14} /> Edit Master Schedule
+            </button>
+          </div>
         </motion.div>
       );
     }
@@ -310,7 +317,35 @@ export default function Gym() {
         {/* ── ADRENALINE HERO CARD ── */}
         {(() => {
           const quote = getWorkoutQuote(sched.name);
-          const xpPotential = Math.round(exercises.length * 10 + totalSets * 15);
+          const levelInfo = calculateLevel(gamification.xp || 0);
+
+          // Live session stats
+          let liveVolumeKg = 0;
+          let liveCompletedSets = 0;
+          exercises.forEach(ex => {
+            if (currentWorkout) {
+              ex.sets?.forEach(s => {
+                if (s.completed) {
+                  liveVolumeKg += (Number(s.weight) || 0) * (Number(s.reps) || 0);
+                  liveCompletedSets++;
+                }
+              });
+            }
+          });
+
+          const sessionDurationMins = Math.max(15, Math.round(
+            (exercises.reduce((a, e) => a + (e.timeTaken || 0), 0)) / 60
+          ) || 30);
+
+          const estCalResult = estimateStrengthWorkoutCalories({
+            durationMinutes: sessionDurationMins,
+            totalVolumeKg: liveVolumeKg,
+            completedSets: liveCompletedSets,
+            weightKg: dietGoals?.weightKg || 70
+          });
+
+          const liveXP = liveCompletedSets * 5 + (progressPct === 100 ? 50 : 0);
+
           return (
             <div style={{ borderRadius:'var(--radius-xl)', overflow:'hidden', border:`1.5px solid ${heroColor}40`, background:`linear-gradient(135deg, ${heroColor}18 0%, ${heroColor}06 100%)` }}>
               <div style={{ padding:'22px 24px 0' }}>
@@ -324,27 +359,49 @@ export default function Gym() {
                       "{quote}"
                     </div>
                   </div>
-                  <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+                  <div style={{ display:'flex', gap:8, flexShrink:0, alignItems:'center' }}>
+                    {/* Level Badge */}
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'6px 12px', borderRadius:'var(--radius-lg)', background: levelInfo.rankColor + '18', border:`1px solid ${levelInfo.rankColor}40` }}>
+                      <div style={{ fontSize:9, fontWeight:900, color: levelInfo.rankColor, textTransform:'uppercase', letterSpacing:1 }}>Lv.{levelInfo.level}</div>
+                      <div style={{ fontSize:8, color:'var(--text-muted)', fontWeight:700 }}>{levelInfo.title}</div>
+                    </div>
                     {isToday && <button className="btn btn-ghost btn-sm" onClick={resetAll}><RotateCcw size={13}/> Reset</button>}
                     {currentWorkout?.completed ? (
-                      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:'var(--radius-lg)', background:'var(--color-success)', color:'white', fontWeight:800, fontSize:13 }}>
+                      <button
+                        onClick={() => {
+                          setSummaryData(currentWorkout);
+                          setShowSummaryModal(true);
+                        }}
+                        style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:'var(--radius-lg)', border:'1px solid var(--color-success)', background:'rgba(34,197,94,0.15)', color:'var(--color-success)', fontWeight:800, fontSize:13, cursor:'pointer' }}>
                         <Check size={13}/> MISSION DONE
-                      </div>
+                      </button>
                     ) : (
                       isToday && progressPct === 100 ? (
-                        <button onClick={() => completeWorkout(gymActiveDate)} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:'var(--radius-lg)', border:'none', background:'var(--color-success)', color:'white', fontWeight:800, fontSize:13, cursor:'pointer', boxShadow: '0 0 15px rgba(34,197,94,0.4)' }}>
+                        <button onClick={async () => { await completeWorkout(gymActiveDate); const w = workouts[gymActiveDate]; setSummaryData(w); setTimeout(() => setShowSummaryModal(true), 500); }} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:'var(--radius-lg)', border:'none', background:'var(--color-success)', color:'white', fontWeight:800, fontSize:13, cursor:'pointer', boxShadow: '0 0 15px rgba(34,197,94,0.4)' }}>
                           <Award size={13}/> FINISH MISSION
                         </button>
                       ) : null
                     )}
                   </div>
                 </div>
-                <div style={{ display:'flex', gap:12, marginTop:14, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>📋 {exercises.length} ex</span>
-                  <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>🏋️ {totalSets} sets</span>
-                  <span style={{ fontSize:11, color:heroColor, fontWeight:800 }}>⚡ +{xpPotential} XP</span>
-                  {gamification.gymStreak > 1 && <span style={{ fontSize:11, color:'#f97316', fontWeight:800 }}>🔥 {gamification.gymStreak} days</span>}
-                </div>
+
+                {/* Live Session Stats Row */}
+                {currentWorkout && liveCompletedSets > 0 && (
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:10, marginTop:14, padding:'12px 0 0' }}>
+                    {[
+                      { icon: '🏋️', label: 'Sets', value: `${liveCompletedSets}/${totalSets}` },
+                      { icon: '📦', label: 'Volume', value: `${liveVolumeKg.toLocaleString()}kg` },
+                      { icon: '🔥', label: 'Est. Kcal', value: `~${estCalResult.estimatedCalories}` },
+                      { icon: '⚡', label: 'XP So Far', value: `+${liveXP}` },
+                    ].map(stat => (
+                      <div key={stat.label} style={{ textAlign:'center', padding:'8px 4px', borderRadius:'var(--radius-md)', background:'rgba(255,255,255,0.03)', border:'1px solid var(--border-subtle)' }}>
+                        <div style={{ fontSize:14 }}>{stat.icon}</div>
+                        <div style={{ fontSize:13, fontWeight:900, color:'var(--text-primary)' }}>{stat.value}</div>
+                        <div style={{ fontSize:9, color:'var(--text-muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:0.5 }}>{stat.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               {/* Progress Bar */}
               <div style={{ padding:'12px 18px 18px' }}>
@@ -425,6 +482,14 @@ export default function Gym() {
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 2 }}>
                       <span style={{ fontSize: 18, fontWeight: 950, color: allExDone ? 'var(--color-success)' : 'var(--text-primary)', letterSpacing: -0.8 }}>{ex.name}</span>
+                      <button 
+                        type="button"
+                        onClick={() => setShowExDetailModal(ex)}
+                        title="View Form Cues & Guidance"
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-subtle)', borderRadius: '50%', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: tagColor, padding: 0 }}
+                      >
+                        <Info size={14} />
+                      </button>
                       <span style={{ fontSize: 8, fontWeight: 900, background: tagColor, color: 'white', padding: '2px 8px', borderRadius: 'var(--radius-full)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{ex.muscle}</span>
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -1368,8 +1433,290 @@ export default function Gym() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* ── EXERCISE DETAILS & FORM CUES MODAL ── */}
+      <AnimatePresence>
+        {showExDetailModal && (() => {
+          const ex = showExDetailModal;
+          const libEx = exerciseLibrary.find(l => l.name === ex.name) || ex;
+          const col = MUSCLE_COLORS[ex.muscle] || '#6e6aff';
+          const exPrs = (personalRecords || []).filter(pr => pr.exerciseName === ex.name);
+          const bestPR = exPrs.sort((a,b) => (b.weight || 0) - (a.weight || 0))[0];
+
+          return (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', zIndex: 99998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+            >
+              <motion.div
+                initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9 }}
+                style={{ background: 'var(--bg-card)', borderRadius: 28, padding: 28, maxWidth: 500, width: '100%', border: '1px solid var(--border-subtle)', boxShadow: '0 30px 60px rgba(0,0,0,0.6)', maxHeight: '90vh', overflowY: 'auto' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 20, fontWeight: 950, color: 'var(--text-primary)', letterSpacing: -0.5 }}>{ex.name}</div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, background: col, color: 'white', padding: '2px 8px', borderRadius: 'var(--radius-full)', textTransform: 'uppercase' }}>{ex.muscle}</span>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, background: 'var(--bg-elevated)', padding: '2px 8px', borderRadius: 'var(--radius-full)' }}>{libEx.equipment || 'Bodyweight'}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowExDetailModal(null)} className="btn btn-ghost btn-icon btn-sm"><X size={18}/></button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontSize: 13 }}>
+                  
+                  {/* Form Cues & Guidance */}
+                  <div style={{ padding: 14, background: 'var(--bg-elevated)', borderRadius: 16, border: '1px solid var(--border-subtle)' }}>
+                    <div style={{ fontSize: 11, fontWeight: 900, color: col, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>💡 Form Cues & Guidance</div>
+                    <div style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                      {libEx.instructions || 'Maintain controlled movement, avoid using momentum, and focus on full range of motion.'}
+                    </div>
+                  </div>
+
+                  {/* Purpose */}
+                  {libEx.purpose && (
+                    <div style={{ padding: 14, background: 'var(--bg-elevated)', borderRadius: 16, border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>🎯 Purpose</div>
+                      <div style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{libEx.purpose}</div>
+                    </div>
+                  )}
+
+                  {/* Personal Best Record */}
+                  <div style={{ padding: 14, background: 'rgba(139,92,246,0.1)', borderRadius: 16, border: '1px solid rgba(139,92,246,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 900, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: 1 }}>Personal Record</div>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)', marginTop: 2 }}>
+                        {bestPR ? `${bestPR.weight}kg × ${bestPR.reps} reps` : 'No PR recorded yet'}
+                      </div>
+                    </div>
+                    <Trophy size={24} color="#a78bfa" />
+                  </div>
+
+                </div>
+
+                <button onClick={() => setShowExDetailModal(null)} className="btn btn-primary" style={{ width: '100%', marginTop: 20, padding: 12, fontWeight: 800 }}>
+                  Close
+                </button>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* ── CUSTOM WORKOUT BUILDER MODAL ── */}
+      <AnimatePresence>
+        {showBuilderModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', zIndex: 99998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9 }}
+              style={{ background: 'var(--bg-card)', borderRadius: 28, padding: 28, maxWidth: 500, width: '100%', border: '1px solid var(--border-subtle)', boxShadow: '0 30px 60px rgba(0,0,0,0.6)', maxHeight: '90vh', overflowY: 'auto' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Dumbbell size={22} color="var(--accent-primary)" />
+                  <h3 style={{ fontSize: 18, fontWeight: 950, color: 'var(--text-primary)', margin: 0 }}>Custom Workout Builder</h3>
+                </div>
+                <button onClick={() => setShowBuilderModal(false)} className="btn btn-ghost btn-icon btn-sm"><X size={18}/></button>
+              </div>
+
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                setGymScheduleDay(builderForm.dayDow, {
+                  name: builderForm.name,
+                  exercises: builderForm.exercises
+                });
+                setShowBuilderModal(false);
+                toast.success(`Saved custom workout: ${builderForm.name}! 💪`);
+              }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                <div className="form-group">
+                  <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6, display: 'block' }}>Workout Name</label>
+                  <input className="search-input" value={builderForm.name} onChange={e => setBuilderForm({ ...builderForm, name: e.target.value })} placeholder="e.g. Upper Body Hypertrophy" required />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6, display: 'block' }}>Assigned Schedule Day</label>
+                  <select className="search-input" value={builderForm.dayDow} onChange={e => setBuilderForm({ ...builderForm, dayDow: Number(e.target.value) })}>
+                    {['Sunday (Rest)', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, idx) => (
+                      <option key={idx} value={idx}>{day}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6, display: 'block' }}>Exercises ({builderForm.exercises.length})</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto' }}>
+                    {builderForm.exercises.map((ex, idx) => (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: 10, border: '1px solid var(--border-subtle)' }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>{ex.name}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{ex.targetSets} sets × {ex.targetReps} reps · {ex.muscle}</div>
+                        </div>
+                        <button type="button" onClick={() => {
+                          const updated = builderForm.exercises.filter((_, i) => i !== idx);
+                          setBuilderForm({ ...builderForm, exercises: updated });
+                        }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={14}/></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Add Exercise Selector */}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <select id="builderExSelect" className="search-input" style={{ flex: 1 }}>
+                    {exerciseLibrary.map(ex => (
+                      <option key={ex.id} value={ex.id}>{ex.name} ({ex.muscle})</option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn btn-ghost" onClick={() => {
+                    const selId = document.getElementById('builderExSelect')?.value;
+                    const libEx = exerciseLibrary.find(l => l.id === selId);
+                    if (libEx) {
+                      setBuilderForm({
+                        ...builderForm,
+                        exercises: [...builderForm.exercises, { id: libEx.id, name: libEx.name, muscle: libEx.muscle, targetSets: 3, targetReps: 12 }]
+                      });
+                    }
+                  }}><Plus size={14}/> Add</button>
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                  <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowBuilderModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" style={{ flex: 2 }}>✓ Save Workout to Schedule</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       <RestTimer restTimer={restTimer} stopRestTimer={stopRestTimer} />
+
+      {/* ── WORKOUT SUMMARY MODAL ── */}
+      <AnimatePresence>
+        {showSummaryModal && summaryData && (() => {
+          const w = workouts[gymActiveDate] || summaryData;
+          const completedSets = (w.exercises || []).flatMap(e => e.sets || []).filter(s => s.completed);
+          const totalVolume = w.totalVolumeKg || completedSets.reduce((a, s) => a + ((Number(s.weight) || 0) * (Number(s.reps) || 0)), 0);
+          const durationMins = Math.max(15, Math.round((w.exercises || []).reduce((a, e) => a + (e.timeTaken || 0), 0) / 60) || 45);
+          const estCal = w.estimatedCalories || 0;
+          const xpEarned = w.xpEarned || 0;
+          const newPRs = (personalRecords || []).filter(pr => {
+            const prDate = pr.achievedAt?.slice(0, 10);
+            return prDate === gymActiveDate;
+          });
+          const levelInfo = calculateLevel(gamification.xp || 0);
+
+          return (
+            <motion.div
+              key="summary-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(12px)', zIndex: 99998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+            >
+              <motion.div
+                initial={{ scale: 0.8, y: 40, opacity: 0 }}
+                animate={{ scale: 1, y: 0, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                style={{ background: 'var(--bg-card)', borderRadius: 32, padding: 36, maxWidth: 460, width: '100%', boxShadow: '0 40px 80px rgba(0,0,0,0.7)', border: '1px solid var(--border-subtle)', maxHeight: '90vh', overflowY: 'auto' }}
+              >
+                {/* Header */}
+                <div style={{ textAlign: 'center', marginBottom: 28 }}>
+                  <motion.div
+                    animate={{ scale: [1, 1.15, 1] }}
+                    transition={{ duration: 0.6, delay: 0.3 }}
+                    style={{ fontSize: 56, marginBottom: 12 }}
+                  >🏆</motion.div>
+                  <div style={{ fontSize: 24, fontWeight: 950, color: 'var(--text-primary)', letterSpacing: -1 }}>WORKOUT COMPLETE</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, marginTop: 4 }}>{w.name || 'Strength Session'}</div>
+                </div>
+
+                {/* Stats Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+                  {[
+                    { emoji: '⏱', label: 'Duration', value: `${durationMins} min` },
+                    { emoji: '🏋️', label: 'Sets Completed', value: completedSets.length },
+                    { emoji: '📦', label: 'Total Volume', value: `${totalVolume.toLocaleString()} kg` },
+                    { emoji: '🔥', label: 'Est. Calories', value: `~${estCal} kcal` },
+                    { emoji: '⚡', label: 'XP Earned', value: `+${xpEarned} XP` },
+                    { emoji: '🏆', label: 'New PRs', value: newPRs.length },
+                  ].map(stat => (
+                    <div key={stat.label} style={{ background: 'var(--bg-elevated)', borderRadius: 16, padding: '14px 16px', textAlign: 'center', border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: 20, marginBottom: 4 }}>{stat.emoji}</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text-primary)' }}>{stat.value}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 }}>{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* PRs Section */}
+                {newPRs.length > 0 && (
+                  <div style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 16, padding: '14px 18px', marginBottom: 20 }}>
+                    <div style={{ fontSize: 11, fontWeight: 900, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>🏅 New Personal Records</div>
+                    {newPRs.map(pr => (
+                      <div key={pr.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(139,92,246,0.1)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{pr.exerciseName}</div>
+                        <div style={{ fontSize: 12, fontWeight: 900, color: '#a78bfa' }}>{pr.weight}kg × {pr.reps} reps</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Level Progress */}
+                <div style={{ background: 'var(--bg-elevated)', borderRadius: 16, padding: '14px 18px', marginBottom: 20, border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Level Progress</div>
+                      <div style={{ fontSize: 14, fontWeight: 900, color: levelInfo.rankColor }}>Lv.{levelInfo.level} — {levelInfo.title}</div>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 700 }}>{levelInfo.totalXp.toLocaleString()} / {levelInfo.nextLevelXp.toLocaleString()} XP</div>
+                  </div>
+                  <div style={{ height: 8, background: 'var(--bg-card)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${levelInfo.progress}%` }}
+                      transition={{ duration: 1, ease: 'easeOut' }}
+                      style={{ height: '100%', background: `linear-gradient(90deg, ${levelInfo.rankColor}, ${levelInfo.rankColor}99)`, borderRadius: 'var(--radius-full)' }}
+                    />
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, textAlign: 'right' }}>{levelInfo.remainingXp} XP to next level</div>
+                </div>
+
+                {/* Streak */}
+                {gamification.gymStreak > 0 && (
+                  <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                    <span style={{ fontSize: 22 }}>🔥</span>
+                    <span style={{ fontSize: 14, fontWeight: 900, color: '#f97316', marginLeft: 6 }}>
+                      {gamification.gymStreak} Day Workout Streak!
+                    </span>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button
+                    onClick={() => setShowSummaryModal(false)}
+                    style={{ flex: 1, padding: '14px', borderRadius: 16, border: '1px solid var(--border-default)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => setShowSummaryModal(false)}
+                    style={{ flex: 2, padding: '14px', borderRadius: 16, border: 'none', background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', fontWeight: 900, fontSize: 14, cursor: 'pointer', boxShadow: '0 8px 20px rgba(16,185,129,0.4)' }}
+                  >
+                    ✓ Finish & Save
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
     </div>
   );
 }

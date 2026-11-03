@@ -1,12 +1,14 @@
 import { useMemo } from 'react';
 import { useStore } from '../store/useStore';
-import { format, subDays, eachDayOfInterval, startOfMonth, endOfMonth, eachWeekOfInterval, startOfWeek, endOfWeek, parse, differenceInMinutes } from 'date-fns';
+import { format, subDays, eachDayOfInterval, startOfWeek, endOfWeek, parse, differenceInMinutes } from 'date-fns';
 import { motion } from 'framer-motion';
 import {
   AreaChart, Area, BarChart, Bar, RadarChart, Radar, PolarGrid, PolarAngleAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
 } from 'recharts';
-import { TrendingUp, Award, Target, Zap, Calendar, Activity } from 'lucide-react';
+import { TrendingUp, Award, Target, Zap, Activity } from 'lucide-react';
+
+import { calculateBMR } from '../lib/calorieBurnService';
 
 const HEATMAP_COLORS = ['var(--bg-elevated)', '#1e3a2f', '#166434', '#16a34a', '#22c55e'];
 const CAT_COLORS = ['#6e6aff', '#a78bfa', '#10d98e', '#38bdf8', '#f5a623', '#ff5e72'];
@@ -26,33 +28,31 @@ function Section({ title, sub, children, delay = 0 }) {
 }
 
 export default function Analytics() {
-  const { tasks, gamification, workouts, personalRecords, user, sleepLogs, energyLogs } = useStore();
+  const { tasks, gamification, workouts, user, sleepLogs, energyLogs, dietGoals, calculateCorrelationData } = useStore();
   const todayKey = format(new Date(), 'yyyy-MM-dd');
+
+  const correlation = useMemo(() => {
+    return calculateCorrelationData(14);
+  }, [calculateCorrelationData]);
 
   // --- Operative Intelligence ---
   const intelligence = useMemo(() => {
-    if (!user) return null;
-    const w = parseFloat(user.weight) || 0;
-    const h = parseFloat(user.height) || 0;
-    const a = parseInt(user.age) || 0;
-    const g = user.gender || 'Other';
+    const w = parseFloat(user?.weight || dietGoals?.weightKg) || 70;
+    const h = parseFloat(user?.height || dietGoals?.heightCm) || 175;
+    const a = parseInt(user?.age || dietGoals?.age) || 25;
+    const g = user?.gender || dietGoals?.gender || 'male';
     
     // BMI
     const bmi = h > 0 ? (w / ((h / 100) ** 2)).toFixed(1) : 0;
     
-    // BMR (Mifflin-St Jeor Equation)
-    let bmr = 0;
-    if (w > 0 && h > 0 && a > 0) {
-      if (g === 'Male') bmr = 10 * w + 6.25 * h - 5 * a + 5;
-      else if (g === 'Female') bmr = 10 * w + 6.25 * h - 5 * a - 161;
-      else bmr = 10 * w + 6.25 * h - 5 * a - 78; // Average
-    }
+    // Central BMR from CalorieBurnService
+    const bmr = calculateBMR({ weightKg: w, heightCm: h, age: a, gender: g });
     
     // Water (basic calculation: 35ml per kg)
     const water = (w * 0.035).toFixed(1);
     
-    return { bmi, bmr: Math.round(bmr), water, fitnessGoal: user.fitnessGoal, style: user.productivityStyle };
-  }, [user]);
+    return { bmi, bmr, water, fitnessGoal: user?.fitnessGoal || dietGoals?.goalType, style: user?.productivityStyle };
+  }, [user, dietGoals]);
 
   // --- Last 30 days daily data ---
   const dailyData = useMemo(() => {
@@ -171,7 +171,6 @@ export default function Analytics() {
   // --- Fitness analysis ---
   const fitnessData = useMemo(() => {
     const start = subDays(new Date(), 29);
-    const userWeight = parseFloat(user?.weight) || 75; // Fallback to 75kg
     return eachDayOfInterval({ start, end: new Date() }).map(d => {
       const key = format(d, 'yyyy-MM-dd');
       const dayWorkouts = workouts[key];
@@ -182,9 +181,11 @@ export default function Analytics() {
           (ex.sets || []).forEach(s => {
              if (s.completed) {
                 sets++;
-                const w = parseFloat(s.weight) || (ex.muscle === 'Cardio' ? 0 : userWeight);
+                const w = parseFloat(s.weight) || 0;
                 const r = parseInt(s.reps) || 0;
-                tonnage += (w * r);
+                if (w > 0 && r > 0) {
+                  tonnage += (w * r);
+                }
              }
           });
         });
@@ -195,7 +196,7 @@ export default function Analytics() {
         tonnage: Math.round(tonnage)
       };
     });
-  }, [workouts, todayKey, user?.weight]);
+  }, [workouts]);
   
   // --- Sleep Intelligence ---
   const sleepData = useMemo(() => {
@@ -259,7 +260,7 @@ export default function Analytics() {
       {/* Summary stats */}
       <div className="grid-4">
         {[
-          { label: 'Total Tasks', value: totalAllTime, icon: Target, color: 'var(--accent-primary)' },
+          { label: 'Total Tasks', value: totalAllTime, icon: Target, color: 'var(--accent-primary)', sub: `${avgPerDay}/day avg` },
           { label: 'Completed', value: completedAllTime, icon: Award, color: 'var(--color-success)' },
           { label: 'Overall Rate', value: `${overallRate}%`, icon: TrendingUp, color: 'var(--color-info)' },
           { label: 'Best Day Score', value: `${bestDay.score}%`, icon: Zap, color: 'var(--color-warning)', sub: bestDay.label },
@@ -299,6 +300,35 @@ export default function Analytics() {
           </div>
         </Section>
       )}
+
+      {/* Cross-Module Intelligence & Empirical Correlation Analysis */}
+      <Section title="Cross-Module Correlation Analysis" sub={`Empirical insights discovered across 14 days of logged data`} delay={0.09}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+          <div style={{ padding: 16, background: 'rgba(99,102,241,0.06)', borderRadius: 16, border: '1px solid rgba(99,102,241,0.2)' }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--accent-primary)', textTransform: 'uppercase', marginBottom: 6 }}>
+              Protein Adherence vs Training
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--text-primary)' }}>
+              {correlation.workoutProteinRatio}%
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+              {correlation.observationProtein}
+            </div>
+          </div>
+
+          <div style={{ padding: 16, background: 'rgba(16,185,129,0.06)', borderRadius: 16, border: '1px solid rgba(16,185,129,0.2)' }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#10b981', textTransform: 'uppercase', marginBottom: 6 }}>
+              Morning Routine vs Focus Hours
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--text-primary)' }}>
+              {correlation.routineFocusRatio}%
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+              {correlation.observationFocus}
+            </div>
+          </div>
+        </div>
+      </Section>
 
       {/* Daily Score 30d */}
       <Section title="30-Day Performance" sub="Daily task completion score" delay={0.1}>

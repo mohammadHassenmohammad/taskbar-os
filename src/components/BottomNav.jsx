@@ -1,6 +1,6 @@
 import { useStore } from '../store/useStore';
 import { motion } from 'framer-motion';
-import { Home, CheckSquare, Calendar, PieChart, Focus, Dumbbell } from 'lucide-react';
+import { Home, CheckSquare, Calendar, PieChart, Dumbbell } from 'lucide-react';
 
 export default function BottomNav() {
   const { currentPage, setPage } = useStore();
