@@ -10,39 +10,18 @@ import {
   Square,
   MessageSquare,
   Edit2,
-  Check,
   Search,
-  Menu,
-  X,
-  ChevronDown,
-  Layers,
-  HeartHandshake,
-  Dumbbell,
-  Compass,
-  Zap,
-  BookOpen
+  Check
 } from 'lucide-react';
 import AIMessage from './AIMessage';
-import { motion, AnimatePresence } from 'framer-motion';
-
-const PERSONALITY_MODES_CONFIG = [
-  { id: 'normal', name: 'Normal', desc: 'Natural everyday dialogue', icon: Bot },
-  { id: 'friendly', name: 'Friendly', desc: 'Warm, approachable, conversational', icon: HeartHandshake },
-  { id: 'motivation', name: 'Motivation', desc: 'Overcoming friction, constructive wins', icon: Zap },
-  { id: 'emotional_support', name: 'Emotional Support', desc: 'Empathetic listening on tough days', icon: HeartHandshake },
-  { id: 'coach', name: 'Coach', desc: 'Tactical, action-oriented execution', icon: Compass },
-  { id: 'analytical', name: 'Analytical', desc: 'Evidence-based metrics & data trends', icon: Layers },
-  { id: 'learning', name: 'Learning', desc: 'Clear step-by-step explanations', icon: BookOpen },
-  { id: 'concise', name: 'Concise', desc: 'Short, direct, minimal fluff', icon: Sparkles }
-];
 
 const SUGGESTED_PROMPTS = [
   'How was my productivity this week?',
-  'What tasks should I prioritize today?',
-  'Which habits have been most consistent?',
-  'I had a tough day and feel unproductive.',
-  'Summarize my workout and focus history.',
-  'Help me structure a realistic daily schedule.'
+  'What should I work on today?',
+  'Motivate me',
+  'I had a difficult day',
+  'Explain Java HashMap',
+  'Plan tomorrow'
 ];
 
 export default function AIChat({ ai }) {
@@ -54,13 +33,11 @@ export default function AIChat({ ai }) {
     error,
     conversations,
     activeConvId,
-    currentMode,
     contextBadges,
     switchConversation,
     createNewConversation,
     deleteConversation,
     renameConversation,
-    setMode,
     clearConversation,
     stopGeneration,
     sendMessage,
@@ -72,8 +49,6 @@ export default function AIChat({ ai }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingConvId, setEditingConvId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -114,9 +89,6 @@ export default function AIChat({ ai }) {
     c.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const activeModeObj = PERSONALITY_MODES_CONFIG.find(m => m.id === currentMode) || PERSONALITY_MODES_CONFIG[0];
-  const ActiveIcon = activeModeObj.icon;
-
   return (
     <div style={{
       display: 'flex',
@@ -129,16 +101,15 @@ export default function AIChat({ ai }) {
     }}>
       {/* 1. CONVERSATIONS SIDEBAR */}
       <div style={{
-        width: '260px',
+        width: '240px',
         borderRight: '1px solid var(--border-subtle)',
         background: 'rgba(0, 0, 0, 0.2)',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
         zIndex: 10,
-        transition: 'transform 0.2s ease',
         flexShrink: 0
-      }} className={`ai-chat-sidebar ${sidebarOpen ? 'open' : ''}`}>
+      }} className="ai-chat-sidebar">
         {/* Sidebar Header */}
         <div style={{
           padding: '12px 14px',
@@ -151,7 +122,7 @@ export default function AIChat({ ai }) {
           <button
             type="button"
             className="btn btn-primary btn-sm"
-            onClick={() => createNewConversation(currentMode)}
+            onClick={() => createNewConversation()}
             style={{ width: '100%', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
           >
             <Plus size={14} />
@@ -192,7 +163,7 @@ export default function AIChat({ ai }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px' }}>
           {filteredConversations.length === 0 ? (
             <div style={{ padding: '20px 12px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
-              No conversations found.
+              No chats yet.
             </div>
           ) : (
             filteredConversations.map(conv => {
@@ -296,11 +267,11 @@ export default function AIChat({ ai }) {
           flexWrap: 'wrap',
           gap: 8
         }}>
-          {/* Left: Bot Profile & Mode Selector */}
+          {/* Left: JARVIS Profile & Context Indicators */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
-              width: 32,
-              height: 32,
+              width: 34,
+              height: 34,
               borderRadius: 10,
               background: 'rgba(99, 102, 241, 0.15)',
               color: 'var(--accent-primary)',
@@ -309,91 +280,22 @@ export default function AIChat({ ai }) {
               justifyContent: 'center',
               flexShrink: 0
             }}>
-              <ActiveIcon size={18} />
+              <Bot size={20} />
             </div>
 
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>
-                  TaskBar OS Companion
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: -0.3 }}>
+                  JARVIS
                 </h3>
-
-                {/* Personality Mode Selector Dropdown */}
-                <div style={{ position: 'relative' }}>
-                  <button
-                    type="button"
-                    onClick={() => setModeDropdownOpen(!modeDropdownOpen)}
-                    style={{
-                      background: 'rgba(99, 102, 241, 0.12)',
-                      border: '1px solid rgba(99, 102, 241, 0.25)',
-                      borderRadius: 12,
-                      padding: '2px 8px',
-                      color: 'var(--accent-primary)',
-                      fontSize: 10,
-                      fontWeight: 800,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <span>{activeModeObj.name}</span>
-                    <ChevronDown size={10} />
-                  </button>
-
-                  {modeDropdownOpen && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      marginTop: 4,
-                      width: '210px',
-                      background: 'var(--bg-base)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: 12,
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                      zIndex: 50,
-                      overflow: 'hidden',
-                      padding: '4px'
-                    }}>
-                      {PERSONALITY_MODES_CONFIG.map(m => {
-                        const Icon = m.icon;
-                        const isSelected = m.id === currentMode;
-                        return (
-                          <div
-                            key={m.id}
-                            onClick={() => {
-                              setMode(m.id);
-                              setModeDropdownOpen(false);
-                            }}
-                            style={{
-                              padding: '6px 8px',
-                              borderRadius: 6,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                              cursor: 'pointer',
-                              background: isSelected ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                              color: isSelected ? 'var(--accent-primary)' : 'var(--text-secondary)'
-                            }}
-                          >
-                            <Icon size={13} />
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div style={{ fontSize: 11, fontWeight: 700 }}>{m.name}</div>
-                              <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>{m.desc}</div>
-                            </div>
-                            {isSelected && <Check size={12} />}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  TaskBar OS Intelligence Engine
+                </span>
               </div>
 
               {/* Context Indicator Badges */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Context:</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Live Data:</span>
                 {contextBadges.map((b, i) => (
                   <span
                     key={i}
@@ -472,9 +374,9 @@ export default function AIChat({ ai }) {
               padding: '20px'
             }}>
               <div style={{
-                width: 44,
-                height: 44,
-                borderRadius: 14,
+                width: 48,
+                height: 48,
+                borderRadius: 16,
                 background: 'rgba(99, 102, 241, 0.15)',
                 color: 'var(--accent-primary)',
                 display: 'flex',
@@ -484,20 +386,20 @@ export default function AIChat({ ai }) {
               }}>
                 <Sparkles size={24} />
               </div>
-              <h4 style={{ fontSize: 16, fontWeight: 900, color: 'var(--text-primary)', margin: '0 0 6px' }}>
-                Your Personal AI Companion is Ready
+              <h4 style={{ fontSize: 17, fontWeight: 900, color: 'var(--text-primary)', margin: '0 0 6px' }}>
+                JARVIS is Online & Ready
               </h4>
-              <p style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 420, margin: '0 0 20px', lineHeight: 1.5 }}>
-                Connected to your real tasks, habits, workouts, and focus records. Ask anything or pick a conversation starter below:
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 460, margin: '0 0 20px', lineHeight: 1.5 }}>
+                Ask anything naturally. I have full context of your TaskBar OS tasks, habits, workouts, and focus sessions, or we can discuss any general topic or project.
               </p>
 
               {/* Suggested Prompts Grid */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
                 gap: 8,
                 width: '100%',
-                maxWidth: 580
+                maxWidth: 600
               }}>
                 {SUGGESTED_PROMPTS.map((prompt, i) => (
                   <button
@@ -508,9 +410,9 @@ export default function AIChat({ ai }) {
                       background: 'rgba(255, 255, 255, 0.03)',
                       border: '1px solid var(--border-subtle)',
                       borderRadius: 10,
-                      padding: '8px 12px',
+                      padding: '10px 14px',
                       color: 'var(--text-primary)',
-                      fontSize: 11,
+                      fontSize: 12,
                       textAlign: 'left',
                       cursor: 'pointer',
                       transition: 'all 0.15s'
@@ -546,8 +448,7 @@ export default function AIChat({ ai }) {
                     id: 'streaming_active',
                     role: 'assistant',
                     content: streamingContent || 'Thinking...',
-                    timestamp: new Date().toISOString(),
-                    mode: currentMode
+                    timestamp: new Date().toISOString()
                   }}
                 />
               )}
@@ -566,7 +467,7 @@ export default function AIChat({ ai }) {
                   fontSize: 12
                 }}>
                   <RefreshCw size={13} className="spin" color="var(--accent-primary)" />
-                  <span>Synthesizing response...</span>
+                  <span>Consulting intelligence engine...</span>
                 </div>
               )}
 
@@ -604,7 +505,7 @@ export default function AIChat({ ai }) {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={`Message TaskBar OS Companion (${activeModeObj.name} Mode)... (Shift+Enter for newline)`}
+            placeholder="Ask JARVIS anything... (Shift+Enter for newline)"
             rows={1}
             disabled={loading || isStreaming}
             style={{

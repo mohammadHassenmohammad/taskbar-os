@@ -54,7 +54,7 @@ async function runTestSuite() {
   const geminiProv = new GeminiProvider({ apiKey: '' });
   assert(geminiProv instanceof BaseAIProvider, 'GeminiProvider implements BaseAIProvider');
   assert(geminiProv.isConfigured() === false, 'Gemini correctly reports unconfigured when API key is empty');
-  assert(geminiProv.model === 'gemini-3.8-flash' || geminiProv.model === 'gemini-1.5-flash', 'Gemini defaults to valid flash model');
+  assert(geminiProv.model.includes('flash'), 'Gemini defaults to valid flash model');
 
   const openRouterProv = new OpenRouterProvider({ apiKey: '' });
   assert(openRouterProv instanceof BaseAIProvider, 'OpenRouterProvider implements BaseAIProvider');

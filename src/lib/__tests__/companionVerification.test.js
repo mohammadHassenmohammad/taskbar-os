@@ -1,19 +1,13 @@
 /**
- * TaskBar OS — AI Companion & Dynamic Discovery Test Suite
- * Verifies Phase 1 through Phase 13 requirements:
- * 1. Model discovery & generateContent filtering
- * 2. Model normalization (models/ prefix)
- * 3. Fallback resolution logic
- * 4. 8 personality modes & ethical boundaries
- * 5. Multi-conversation short-term memory
- * 6. User-controlled long-term preference memory
- * 7. Action proposal approval workflow
- * 8. Context indicators and sanitization
+ * TaskBar OS — JARVIS Conversational Intelligence Test Suite
+ * Verifies JARVIS-style intent classification, application tools,
+ * dynamic model normalization, ethical directives, and context orchestration.
  */
 
 import { GeminiProvider } from '../../../server/ai/providers/geminiProvider.js';
 import { LocalDeterministicProvider } from '../../../server/ai/providers/localProvider.js';
-import { PERSONALITY_MODES, buildCompanionSystemPrompt } from '../../../server/ai/prompts/personalityPrompts.js';
+import { classifyIntent, orchestrateConversation, INTENT_TYPES } from '../../../server/ai/orchestrator.js';
+import { ApplicationTools } from '../../../server/ai/tools/applicationTools.js';
 import { prepareFullContext, getContextBadges } from '../../ai/services/aiContextService.js';
 
 let passed = 0;
@@ -31,125 +25,103 @@ function assert(condition, message) {
 
 async function runTestSuite() {
   console.log('====================================================================');
-  console.log('TASKBAR OS — AI COMPANION & DYNAMIC DISCOVERY TEST SUITE');
+  console.log('TASKBAR OS — JARVIS CONVERSATIONAL INTELLIGENCE TEST SUITE');
   console.log('====================================================================');
 
-  // --- 1. MODEL NORMALIZATION & NAME RESOLUTION ---
-  console.log('\n--- 1. MODEL NORMALIZATION & RESOLUTION ---');
-  const provider = new GeminiProvider({ apiKey: 'test_key' });
-  
-  assert(provider._normalizeModelName('gemini-2.0-flash') === 'models/gemini-2.0-flash', 'Normalizes model without prefix to models/gemini-2.0-flash');
-  assert(provider._normalizeModelName('models/gemini-2.0-flash') === 'models/gemini-2.0-flash', 'Preserves models/ prefix without double prefixing');
-  assert(provider._cleanModelName('models/gemini-2.0-flash') === 'gemini-2.0-flash', 'Cleans models/ prefix for UI display');
-  assert(provider._cleanModelName('gemini-2.0-flash') === 'gemini-2.0-flash', 'Preserves clean model name');
+  // --- 1. JARVIS INTENT CLASSIFICATION ENGINE ---
+  console.log('\n--- 1. JARVIS INTENT CLASSIFICATION ---');
+  assert(classifyIntent('hi') === INTENT_TYPES.GREETING, 'Classifies "hi" as GREETING');
+  assert(classifyIntent('hello') === INTENT_TYPES.GREETING, 'Classifies "hello" as GREETING');
+  assert(classifyIntent('what are you doing?') === INTENT_TYPES.CASUAL, 'Classifies "what are you doing?" as CASUAL');
+  assert(classifyIntent('nice') === INTENT_TYPES.CASUAL, 'Classifies "nice" as CASUAL');
+  assert(classifyIntent('how was my productivity this week?') === INTENT_TYPES.PRODUCTIVITY_CURRENT, 'Classifies productivity query as PRODUCTIVITY_CURRENT');
+  assert(classifyIntent('what about last week?') === INTENT_TYPES.PRODUCTIVITY_PREVIOUS, 'Classifies follow-up "what about last week?" as PRODUCTIVITY_PREVIOUS');
+  assert(classifyIntent('compare them', [{ role: 'assistant', content: 'Here is your weekly summary' }]) === INTENT_TYPES.PRODUCTIVITY_COMPARE, 'Classifies "compare them" as PRODUCTIVITY_COMPARE');
+  assert(classifyIntent('what should I improve?') === INTENT_TYPES.SUGGESTION_IMPROVEMENT, 'Classifies "what should I improve?" as SUGGESTION_IMPROVEMENT');
+  assert(classifyIntent('motivate me') === INTENT_TYPES.MOTIVATION, 'Classifies "motivate me" as MOTIVATION');
+  assert(classifyIntent('I had a difficult day') === INTENT_TYPES.EMOTIONAL_SUPPORT, 'Classifies "I had a difficult day" as EMOTIONAL_SUPPORT');
+  assert(classifyIntent('explain Java HashMap') === INTENT_TYPES.GENERAL_KNOWLEDGE, 'Classifies "explain Java HashMap" as GENERAL_KNOWLEDGE');
+  assert(classifyIntent('what did I eat yesterday?') === INTENT_TYPES.DIET_QUERY, 'Classifies diet question as DIET_QUERY');
+  assert(classifyIntent('summarize my workouts this month') === INTENT_TYPES.WORKOUTS_QUERY, 'Classifies workout query as WORKOUTS_QUERY');
+  assert(classifyIntent('plan tomorrow') === INTENT_TYPES.PLANNING, 'Classifies "plan tomorrow" as PLANNING');
 
-  // --- 2. MODEL DISCOVERY & GENERATIVE METHOD FILTERING ---
-  console.log('\n--- 2. MODEL DISCOVERY & FILTERING ---');
-  // Mock discoverModels internally
-  const mockModels = [
-    {
-      name: 'models/gemini-2.0-flash',
-      cleanName: 'gemini-2.0-flash',
-      displayName: 'Gemini 2.0 Flash',
-      supportedGenerationMethods: ['generateContent', 'streamGenerateContent']
+  // --- 2. SELECTIVE DATA ORCHESTRATION ---
+  console.log('\n--- 2. SELECTIVE DATA ORCHESTRATION ---');
+  const mockContext = {
+    today: '2026-11-03',
+    productivity: { totalTasks: 12, completedTasks: 9, completionRatePct: 75, focusMinutes: 150, overdueCount: 1 },
+    tasks: {
+      '2026-11-03': [{ id: 't1', title: 'Code review', priority: 'High', completed: false }]
     },
-    {
-      name: 'models/text-embedding-004',
-      cleanName: 'text-embedding-004',
-      displayName: 'Text Embedding 004',
-      supportedGenerationMethods: ['embedContent']
-    },
-    {
-      name: 'models/gemini-1.5-flash-8b',
-      cleanName: 'gemini-1.5-flash-8b',
-      displayName: 'Gemini 1.5 Flash 8B',
-      supportedGenerationMethods: ['generateContent']
+    habits: [
+      { id: 'h1', title: 'Daily Workout', streak: 4, completedToday: true }
+    ],
+    workouts: {
+      sessionCount: 3,
+      totalVolumeKg: 4200
     }
-  ];
+  };
 
-  provider.discoveredModels = mockModels.filter(m => 
-    m.supportedGenerationMethods.includes('generateContent')
-  );
-  provider.modelsLastDiscoveredAt = Date.now();
-
-  assert(provider.discoveredModels.length === 2, 'Filters out non-generative embedding models');
-  assert(!provider.discoveredModels.some(m => m.cleanName === 'text-embedding-004'), 'Embedding-only models excluded from generative candidate list');
-
-  // --- 3. INTELLIGENT MODEL FALLBACK ---
-  console.log('\n--- 3. INTELLIGENT MODEL FALLBACK ---');
-  // If preferred model is 'gemini-nonexistent-model', it should fallback to available candidate in priority list
-  provider.preferredModel = 'gemini-nonexistent-model';
-  const resolved = await provider.getResolvedModel();
-  assert(resolved === 'models/gemini-2.0-flash', 'Automatically falls back to first compatible priority model when preferred model is absent');
-  assert(provider.lastResolvedModel === 'gemini-2.0-flash', 'Records lastResolvedModel cleanly');
-
-  // --- 4. 8 PERSONALITY MODES & SAFETY DIRECTIVES ---
-  console.log('\n--- 4. 8 PERSONALITY MODES & SAFETY ---');
-  const expectedModes = ['normal', 'friendly', 'motivation', 'emotional_support', 'coach', 'analytical', 'learning', 'concise'];
-  expectedModes.forEach(modeId => {
-    assert(Boolean(PERSONALITY_MODES[modeId]), `Personality mode "${modeId}" is defined`);
-    assert(Boolean(PERSONALITY_MODES[modeId].instructions), `Mode "${modeId}" contains custom behavioral instructions`);
+  // Greeting must NOT attach retrieved data
+  const greetingOrch = orchestrateConversation({
+    messages: [{ role: 'user', content: 'hi' }],
+    context: mockContext
   });
+  assert(greetingOrch.retrievedData === null, 'Greeting does not attach heavy application data tables');
+  assert(greetingOrch.systemPrompt.includes('simply greeting you'), 'Greeting prompt guides natural social reply');
 
-  const prompt = buildCompanionSystemPrompt('emotional_support', { testContext: true }, { preferredStyle: 'Empathy' });
-  assert(prompt.includes('Emotional Support Mode'), 'Prompt includes emotional support instructions');
-  assert(prompt.includes('Never pretend to be a real human'), 'Prompt enforces universal ethical safety directive');
-  assert(prompt.includes('USER PREFERENCES & MEMORY'), 'Prompt injects user long-term memory preferences');
-  assert(prompt.includes('CURRENT TASKBAR OS CONTEXT'), 'Prompt injects live TaskBar OS state');
+  // General knowledge must NOT attach retrieved data
+  const gkOrch = orchestrateConversation({
+    messages: [{ role: 'user', content: 'explain recursion in programming' }],
+    context: mockContext
+  });
+  assert(gkOrch.retrievedData === null, 'General knowledge does not attach application data');
+
+  // Productivity query MUST attach retrieved data
+  const prodOrch = orchestrateConversation({
+    messages: [{ role: 'user', content: 'how was my productivity this week?' }],
+    context: mockContext
+  });
+  assert(prodOrch.retrievedData !== null, 'Productivity query attaches real weekly summary metrics');
+  assert(prodOrch.retrievedData.completedTasks === 9, 'Retrieved metrics match actual store data');
+
+  // Comparison query attaches comparison data
+  const compOrch = orchestrateConversation({
+    messages: [{ role: 'user', content: 'compare them' }],
+    context: mockContext
+  });
+  assert(Boolean(compOrch.retrievedData.currentWeek), 'Compare intent generates comparative period data');
+
+  // --- 3. APPLICATION TOOLS DIRECT QUERY ---
+  console.log('\n--- 3. APPLICATION TOOLS DIRECT QUERY ---');
+  const tools = new ApplicationTools(mockContext);
+  const pending = tools.getPendingTasks({ date: '2026-11-03' });
+  assert(pending.count === 1, 'Tools getPendingTasks returns exact pending count');
+  assert(pending.tasks[0].title === 'Code review', 'Tools getPendingTasks returns exact task title');
+
+  const habitStreaks = tools.getHabitStreaks();
+  assert(habitStreaks.length === 1 && habitStreaks[0].streak === 4, 'Tools getHabitStreaks returns sorted streaks');
+
+  // --- 4. MODEL NORMALIZATION & RESOLUTION ---
+  console.log('\n--- 4. MODEL NORMALIZATION & RESOLUTION ---');
+  const provider = new GeminiProvider({ apiKey: 'test_key' });
+  assert(provider._normalizeModelName('gemini-3.5-flash') === 'models/gemini-3.5-flash', 'Normalizes model without prefix to models/gemini-3.5-flash');
+  assert(provider._cleanModelName('models/gemini-3.5-flash') === 'gemini-3.5-flash', 'Cleans models/ prefix for UI display');
 
   // --- 5. STREAMING & LOCAL FALLBACK INTEGRITY ---
   console.log('\n--- 5. STREAMING & LOCAL FALLBACK ---');
   const local = new LocalDeterministicProvider();
   let receivedChunks = [];
   const streamRes = await local.generateStreamResponse(
-    [{ role: 'user', content: 'What tasks do I have?' }],
-    { context: { tasks: { '2026-11-03': [{ id: '1', title: 'Code review', completed: true }] } } },
+    [{ role: 'user', content: 'hi' }],
+    { context: mockContext },
     (chunk) => receivedChunks.push(chunk)
   );
-  assert(receivedChunks.length > 0, 'Local provider yields streaming chunks progressively');
-  assert(streamRes.text.length > 0, 'Local provider returns complete text response');
-
-  // --- 6. CONTEXT BADGES & DOMAIN AGGREGATION ---
-  console.log('\n--- 6. CONTEXT BADGES & DOMAIN AGGREGATION ---');
-  const mockState = {
-    tasks: {
-      '2026-11-03': [
-        { id: 't1', title: 'Audit AI Provider', priority: 'High', completed: false }
-      ]
-    },
-    habits: [
-      { id: 'h1', title: 'Morning Hydration', category: 'Health', streak: 5, archived: false }
-    ],
-    workouts: {
-      '2026-11-03': { id: 'w1', completed: true, exercises: [] }
-    },
-    dietEntries: {
-      '2026-11-03': [{ id: 'd1', name: 'Oats' }]
-    },
-    routines: [
-      { id: 'r1', title: 'Morning Activation', steps: ['Water', 'Stretch'] }
-    ]
-  };
-
-  const badges = getContextBadges(mockState);
-  assert(badges.find(b => b.type === 'tasks')?.active === true, 'Task badge active when tasks exist');
-  assert(badges.find(b => b.type === 'habits')?.active === true, 'Habit badge active when habits exist');
-  assert(badges.find(b => b.type === 'workouts')?.active === true, 'Workout badge active when workouts exist');
-
-  const fullCtx = prepareFullContext(mockState);
-  assert(Boolean(fullCtx.routines), 'Full context aggregates routines module');
-  assert(fullCtx.routines.length === 1, 'Routines count matches actual data');
-  assert(fullCtx.todayTasks.length === 1, 'Today tasks included without leaking sensitive notes');
-
-  // --- 7. ACTION PROPOSAL VALIDATION ---
-  console.log('\n--- 7. ACTION PROPOSAL WORKFLOW ---');
-  const sampleAssistantMsg = 'I noticed you have no focus session planned. I suggest task: "Review Quarterly Goals"';
-  const taskMatch = sampleAssistantMsg.match(/(?:suggest|recommend|create)\s+task[:\s]+"([^"]+)"/i);
-  assert(Boolean(taskMatch), 'Action proposal regex accurately extracts task creation proposals');
-  assert(taskMatch[1] === 'Review Quarterly Goals', 'Action proposal extracts exact proposed task title');
+  assert(receivedChunks.length > 0, 'Local fallback yields streaming chunks');
+  assert(streamRes.text.toLowerCase().includes('hello') || streamRes.text.toLowerCase().includes('hey'), 'Local fallback greeting is friendly and natural');
 
   console.log('\n====================================================================');
-  console.log(`[SUCCESS] All ${passed} / ${total} Companion Verification Tests Passed!`);
+  console.log(`[SUCCESS] All ${passed} / ${total} JARVIS Intelligence Tests Passed!`);
   console.log('====================================================================\n');
 }
 

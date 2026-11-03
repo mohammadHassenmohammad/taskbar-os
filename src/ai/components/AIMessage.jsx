@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bot, User, Copy, Check, Trash2, CheckCircle2, X, PlusCircle, Sparkles } from 'lucide-react';
+import { Bot, User, Copy, Check, Trash2, CheckCircle2, X, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
@@ -112,33 +112,8 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)' }}>
-              {isAssistant ? 'TaskBar OS Companion' : 'Operative'}
+              {isAssistant ? 'JARVIS' : 'Operative'}
             </span>
-            {message.mode && (
-              <span style={{
-                fontSize: 9,
-                fontWeight: 700,
-                padding: '1px 6px',
-                borderRadius: 4,
-                background: 'rgba(99, 102, 241, 0.15)',
-                color: 'var(--accent-primary)',
-                textTransform: 'uppercase'
-              }}>
-                {message.mode}
-              </span>
-            )}
-            {message.isLocalFallback && (
-              <span style={{
-                fontSize: 9,
-                fontWeight: 700,
-                padding: '1px 5px',
-                borderRadius: 4,
-                background: 'rgba(245, 158, 11, 0.15)',
-                color: '#f59e0b'
-              }}>
-                LOCAL ENGINE
-              </span>
-            )}
             <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
               {message.timestamp ? format(new Date(message.timestamp), 'h:mm a') : ''}
             </span>
@@ -170,7 +145,7 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
           {renderFormattedContent(message.content)}
         </div>
 
-        {/* Action Proposal Card (Phase 8 Action Approval Workflow) */}
+        {/* Action Proposal Card (Requires Explicit Approval) */}
         {actionProposal && !actionHandled && onApproveAction && (
           <div style={{
             marginTop: 12,
@@ -188,10 +163,10 @@ export default function AIMessage({ message, onDelete, onApproveAction }) {
               <Sparkles size={14} color="var(--accent-primary)" />
               <div>
                 <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)' }}>
-                  Suggested Action: Create Task
+                  Proposed Action
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  "{actionProposal.title}"
+                  Create Task: "{actionProposal.title}"
                 </div>
               </div>
             </div>

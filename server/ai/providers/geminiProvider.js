@@ -1,18 +1,18 @@
 import { BaseAIProvider } from './baseProvider.js';
-import { buildCompanionSystemPrompt } from '../prompts/personalityPrompts.js';
+import { orchestrateConversation } from '../orchestrator.js';
 
 /**
  * Google Gemini API Provider with Automatic Dynamic Model Discovery,
- * Intelligent Fallback, Real-time SSE Streaming & Self-Healing 404 Recovery.
+ * Intelligent Fallback, Real-time SSE Streaming & Self-Healing 404/429 Recovery.
  */
 export class GeminiProvider extends BaseAIProvider {
   constructor(config = {}) {
     super('gemini');
     this.apiKey = config.apiKey || process.env.GEMINI_API_KEY || '';
-    this.preferredModel = config.model || process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+    this.preferredModel = config.model || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
     this.model = this.preferredModel;
-    this.analysisModel = config.analysisModel || process.env.GEMINI_ANALYSIS_MODEL || 'gemini-3.8-flash';
-    this.fallbackModel = config.fallbackModel || process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash';
+    this.analysisModel = config.analysisModel || process.env.GEMINI_ANALYSIS_MODEL || 'gemini-3.5-flash';
+    this.fallbackModel = config.fallbackModel || process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite';
     this.endpoint = 'https://generativelanguage.googleapis.com/v1beta';
     
     // Model Discovery Cache & Retirement Tracking
@@ -31,15 +31,15 @@ export class GeminiProvider extends BaseAIProvider {
 
   /**
    * Helper to normalize model resource names
-   * Ensures 'gemini-3.8-flash' -> 'models/gemini-3.8-flash'
+   * Ensures 'gemini-3.5-flash' -> 'models/gemini-3.5-flash'
    */
   _normalizeModelName(modelName) {
-    if (!modelName) return 'models/gemini-3.8-flash';
+    if (!modelName) return 'models/gemini-3.5-flash';
     return modelName.startsWith('models/') ? modelName : `models/${modelName}`;
   }
 
   _cleanModelName(modelName) {
-    if (!modelName) return 'gemini-3.8-flash';
+    if (!modelName) return 'gemini-3.5-flash';
     return modelName.replace(/^models\//, '');
   }
 
@@ -119,13 +119,11 @@ export class GeminiProvider extends BaseAIProvider {
 
     // Priority candidate models for free-tier eligible generation
     const priorityOrder = [
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
       'gemini-3.8-flash',
       'gemini-2.0-flash',
-      'gemini-1.5-flash',
-      'gemini-2.5-flash',
-      'gemini-1.5-flash-8b',
-      'gemini-2.0-flash-exp',
-      'gemini-1.5-pro'
+      'gemini-1.5-flash'
     ];
 
     if (available.length > 0) {
@@ -190,31 +188,30 @@ export class GeminiProvider extends BaseAIProvider {
           const status = response.status;
           const msg = errorData.error?.message || response.statusText;
 
-          // Self-heal retired model (404)
-          if (status === 404) {
-            console.warn(`[GeminiProvider] Model ${resolvedModelName} unavailable: ${msg}. Retiring and selecting fallback...`);
+          // Self-heal retired model (404) or quota (429)
+          if (status === 404 || status === 429) {
+            console.warn(`[GeminiProvider] Model ${resolvedModelName} status ${status}: ${msg}. Retrying with alternative...`);
             this.retiredModels.add(this._cleanModelName(resolvedModelName));
             this.retiredModels.add(this._normalizeModelName(resolvedModelName));
 
-            // Extract Google's suggested replacement model if provided (e.g. "use models/gemini-3.8-flash")
+            // Extract Google's suggested replacement model if provided
             const suggestedMatch = msg.match(/use\s+(?:models\/)?([a-zA-Z0-9.\-_]+)/i);
             if (suggestedMatch && suggestedMatch[1]) {
               const suggestedModel = this._cleanModelName(suggestedMatch[1]);
-              console.log(`[GeminiProvider] Google suggested model: ${suggestedModel}. Switching immediately...`);
               this.preferredModel = suggestedModel;
               this.lastResolvedModel = suggestedModel;
             }
 
             if (attempts < maxAttempts) {
               await this.discoverModels(true);
-              continue; // Retry with the next model
+              continue;
             }
           }
 
           this.lastConnectionError = `Gemini API Error (${status}): ${msg}`;
 
           if (status === 429) {
-            throw new Error('Gemini API Rate Limit / Quota Exceeded (Free Tier). Please wait 30 seconds before retrying.');
+            throw new Error('Gemini API Rate Limit / Quota Exceeded (Free Tier). Please wait a few seconds before retrying.');
           } else if (status === 400) {
             throw new Error(`Gemini API Invalid Request: ${msg}`);
           } else if (status === 403 || status === 401) {
@@ -240,13 +237,16 @@ export class GeminiProvider extends BaseAIProvider {
   }
 
   /**
-   * Generates a conversational response with personality mode & live context
+   * Generates a conversational response with JARVIS orchestration
    */
   async generateResponse(messages, options = {}) {
-    const mode = options.mode || 'normal';
-    const context = options.context || {};
-    const preferences = options.preferences || {};
-    const systemPrompt = options.systemPrompt || buildCompanionSystemPrompt(mode, context, preferences);
+    const orchestration = orchestrateConversation({
+      messages,
+      context: options.context || {},
+      preferences: options.preferences || {}
+    });
+
+    const systemPrompt = options.systemPrompt || orchestration.systemPrompt;
 
     const contents = (messages || []).map(m => ({
       role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
@@ -259,7 +259,7 @@ export class GeminiProvider extends BaseAIProvider {
         parts: [{ text: systemPrompt }]
       },
       generationConfig: {
-        temperature: options.temperature ?? 0.6,
+        temperature: options.temperature ?? 0.7,
         maxOutputTokens: options.maxTokens ?? 2048,
       }
     };
@@ -272,24 +272,26 @@ export class GeminiProvider extends BaseAIProvider {
       text,
       model: this.lastResolvedModel,
       provider: 'gemini',
-      mode,
+      intent: orchestration.intent,
       usage: res.usageMetadata || null
     };
   }
 
   /**
    * Real-time Server-Sent Events (SSE) Streaming Response
-   * Calls onChunk(chunkText) as tokens stream in from Google Generative Language API
    */
   async generateStreamResponse(messages, options = {}, onChunk = () => {}) {
     if (!this.isConfigured()) {
       throw new Error('GEMINI_API_KEY is not configured on the server.');
     }
 
-    const mode = options.mode || 'normal';
-    const context = options.context || {};
-    const preferences = options.preferences || {};
-    const systemPrompt = options.systemPrompt || buildCompanionSystemPrompt(mode, context, preferences);
+    const orchestration = orchestrateConversation({
+      messages,
+      context: options.context || {},
+      preferences: options.preferences || {}
+    });
+
+    const systemPrompt = options.systemPrompt || orchestration.systemPrompt;
 
     let attempts = 0;
     const maxAttempts = 3;
@@ -310,7 +312,7 @@ export class GeminiProvider extends BaseAIProvider {
           parts: [{ text: systemPrompt }]
         },
         generationConfig: {
-          temperature: options.temperature ?? 0.6,
+          temperature: options.temperature ?? 0.7,
           maxOutputTokens: options.maxTokens ?? 2048,
         }
       };
@@ -326,8 +328,8 @@ export class GeminiProvider extends BaseAIProvider {
           const errorData = await response.json().catch(() => ({}));
           const msg = errorData.error?.message || response.statusText;
           
-          if (response.status === 404) {
-            console.warn(`[GeminiProvider Stream] Model ${resolvedModelName} returned 404: ${msg}. Retiring...`);
+          if (response.status === 404 || response.status === 429) {
+            console.warn(`[GeminiProvider Stream] Model ${resolvedModelName} status ${response.status}: ${msg}. Retrying...`);
             this.retiredModels.add(this._cleanModelName(resolvedModelName));
             this.retiredModels.add(this._normalizeModelName(resolvedModelName));
 
